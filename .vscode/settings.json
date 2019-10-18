@@ -1,0 +1,6 @@
+{
+  "files.associations": {
+    "*.p": "python",
+    "eigen": "cpp"
+  }
+}
