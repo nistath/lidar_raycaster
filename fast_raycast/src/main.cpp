@@ -35,21 +35,35 @@ class Rays : public Matrix<float, NRays, 6> {
     return *this;
   }
 
+  /**
+   *! Returns a block of the coordinates of each ray's origin.
+   */
   auto constexpr origins() { return get_block(0); }
   auto const constexpr origins() const { return get_block(0); }
 
+  /**
+   *! Returns a block of the (unit) vector of each ray's direction.
+   */
   auto constexpr directions() { return get_block(3); }
   auto const constexpr directions() const { return get_block(3); }
 
   auto constexpr rays() { return Base::rows(); }
 };
 
-
 namespace Intersection {
 
+/**
+ * Solutions
+ *! Provides the scalar `t` for each ray such that direction * t + origin
+ *! is the intersection point.
+ */
 template <int NRays = Dynamic>
 using Solutions = Array<float, NRays, 1>;
 
+/**
+ * Points
+ *! Provides the point each ray intersects with as computed by some method.
+ */
 template <int NRays = Dynamic>
 using Points = Matrix<float, NRays, 3>;
 
@@ -63,6 +77,10 @@ void computePoints(Rays<NRays> const& rays,
 
 namespace Obstacle {
 
+/**
+ * Plane
+ *! A plane obstacle defined by a unit normal vector and an origin.
+ */
 class Plane {
  public:
   Matrix<float, 3, 1> plane_normal;
