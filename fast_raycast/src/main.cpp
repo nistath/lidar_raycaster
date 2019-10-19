@@ -1,4 +1,4 @@
-#include <cassert>
+#include <assert.h>
 #include <eigen3/Eigen/Eigen>
 #include <iostream>
 
@@ -35,7 +35,7 @@ class RaySet : public Matrix<float, NRays, 6> {
 };
 
 template <int NRays = Dynamic>
-using IntersectionSolutions = Matrix<float, NRays, 1>;
+using IntersectionSolutions = Array<float, NRays, 1>;
 
 template <int NRays = Dynamic>
 using IntersectionPoints = Matrix<float, NRays, 3>;
@@ -51,23 +51,20 @@ class PlaneIntersector {
   }
 
   template <int NRays = Dynamic>
-  void computeSolution(RaySet<NRays>& rays,
+  void computeSolution(RaySet<NRays>/*const*/& rays,
                        IntersectionSolutions<NRays>& solutions) {
-    solutions.noalias() =
-        (((-rays.origins()).rowwise() + plane_origin) * plane_normal) /
-        (rays.directions() * plane_normal)(0);
+    solutions = (((-rays.origins()).rowwise() + plane_origin) * plane_normal) /
+                (rays.directions() * plane_normal)(0);
   }
 };
 
 template <int NRays = Dynamic>
-void computeIntersections(RaySet<NRays>& rays,
-                          IntersectionSolutions<NRays>& solutions,
+void computeIntersections(RaySet<NRays>/*const*/& rays,
+                          IntersectionSolutions<NRays> const& solutions,
                           IntersectionPoints<NRays>& points) {
-  points.noalias() =
-      rays.origins() +
-      (rays.directions().array().colwise() * solutions.array()).matrix();
+  points.noalias() = rays.origins() +
+                     (rays.directions().array().colwise() * solutions).matrix();
 }
-
 
 int main() {
   RaySet<Dynamic> rays = RaySet<10>::Zero();
