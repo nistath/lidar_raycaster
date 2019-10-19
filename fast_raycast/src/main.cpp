@@ -4,6 +4,8 @@
 
 using namespace Eigen;
 
+namespace lcaster {
+
 template <int NRays = Dynamic>
 class Rays : public Matrix<float, NRays, 6> {
  private:
@@ -42,39 +44,51 @@ class Rays : public Matrix<float, NRays, 6> {
   auto constexpr rays() { return Base::rows(); }
 };
 
-template <int NRays = Dynamic>
-using IntersectionSolutions = Array<float, NRays, 1>;
+
+namespace Intersection {
 
 template <int NRays = Dynamic>
-using IntersectionPoints = Matrix<float, NRays, 3>;
+using Solutions = Array<float, NRays, 1>;
 
-class PlaneIntersector {
+template <int NRays = Dynamic>
+using Points = Matrix<float, NRays, 3>;
+
+template <int NRays = Dynamic>
+void computePoints(Rays<NRays> const& rays,
+                   Solutions<NRays> const& solutions,
+                   Points<NRays>& points) {
+  points.noalias() = rays.origins() +
+                     (rays.directions().array().colwise() * solutions).matrix();
+}
+
+namespace Obstacle {
+
+class Plane {
  public:
   Matrix<float, 3, 1> plane_normal;
   Matrix<float, 1, 3> plane_origin;
 
-  PlaneIntersector(Vector3f const& normal, Vector3f const& origin)
+  Plane(Vector3f const& normal, Vector3f const& origin)
       : plane_normal{normal}, plane_origin{origin} {
     assert(plane_normal.norm() == 1);
   }
 
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
-                       IntersectionSolutions<NRays>& solutions) {
+                       Intersection::Solutions<NRays>& solutions) {
     solutions = (((-rays.origins()).rowwise() + plane_origin) * plane_normal) /
                 (rays.directions() * plane_normal)(0);
   }
 };
 
-template <int NRays = Dynamic>
-void computeIntersections(Rays<NRays> const& rays,
-                          IntersectionSolutions<NRays> const& solutions,
-                          IntersectionPoints<NRays>& points) {
-  points.noalias() = rays.origins() +
-                     (rays.directions().array().colwise() * solutions).matrix();
-}
+}  // namespace Obstacle
+}  // namespace Intersection
+}  // namespace lcaster
 
 int main() {
+  using namespace lcaster;
+  using namespace lcaster::Intersection;
+
   Rays<Dynamic> rays = Rays<10>::Zero();
   rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(10, 1);
 
@@ -87,14 +101,14 @@ int main() {
 
   std::cout << rays << "\n";
 
-  PlaneIntersector ground({0, 0, 1}, {0, 0, 0});
+  Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
 
-  IntersectionSolutions<Dynamic> solutions(rays.rays());
+  Solutions<Dynamic> solutions(rays.rays());
   ground.computeSolution(rays, solutions);
   std::cout << solutions << "\n";
 
-  IntersectionPoints<Dynamic> points(rays.rays(), 3);
-  computeIntersections(rays, solutions, points);
+  Points<Dynamic> points(rays.rays(), 3);
+  computePoints(rays, solutions, points);
   std::cout << points << "\n";
 
   return 0;
