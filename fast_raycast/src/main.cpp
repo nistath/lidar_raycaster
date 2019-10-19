@@ -1,3 +1,4 @@
+#include <cassert>
 #include <eigen3/Eigen/Eigen>
 #include <iostream>
 
@@ -8,11 +9,11 @@ class RaySet : public Matrix<float, NRays, 6> {
  private:
   using Base = Matrix<float, NRays, 6>;
 
-  auto constexpr get_block(size_t col_offset) {
+  auto constexpr get_block(size_t col_offrays) {
     if constexpr (NRays == Dynamic) {
-      return this->block(0, col_offset, this->rows(), 3);
+      return this->block(0, col_offrays, Base::rows(), 3);
     } else {
-      return this->block<NRays, 3>(0, col_offset);
+      return ((Base*)this)->block<NRays, 3>(0, col_offrays);
     }
   }
 
@@ -30,34 +31,66 @@ class RaySet : public Matrix<float, NRays, 6> {
 
   auto constexpr origins() { return get_block(0); }
   auto constexpr directions() { return get_block(3); }
+  auto constexpr rays() { return Base::rows(); }
 };
 
 template <int NRays = Dynamic>
-using IntersectionSolution = Matrix<float, NRays, 1>;
+using IntersectionSolutions = Matrix<float, NRays, 1>;
+
+template <int NRays = Dynamic>
+using IntersectionPoints = Matrix<float, NRays, 3>;
 
 class PlaneIntersector {
  public:
-  Vector3f plane_normal;
-  Vector3f plane_origin;
+  Matrix<float, 3, 1> plane_normal;
+  Matrix<float, 1, 3> plane_origin;
 
-  PlaneIntersector(Vector3f const& origin, Vector3f const& normal)
-      : plane_normal{normal}, plane_origin{origin} {}
+  PlaneIntersector(Vector3f const& normal, Vector3f const& origin)
+      : plane_normal{normal}, plane_origin{origin} {
+    assert(plane_normal.norm() == 1);
+  }
 
   template <int NRays = Dynamic>
-  void computeSolution(RaySet<NRays> const& rayset,
-                       IntersectionSolution<NRays>& solution) {
-    // solution = plane_origin - rayset;
+  void computeSolution(RaySet<NRays>& rays,
+                       IntersectionSolutions<NRays>& solutions) {
+    solutions.noalias() =
+        (((-rays.origins()).rowwise() + plane_origin) * plane_normal) /
+        (rays.directions() * plane_normal)(0);
   }
 };
 
+template <int NRays = Dynamic>
+void computeIntersections(RaySet<NRays>& rays,
+                          IntersectionSolutions<NRays>& solutions,
+                          IntersectionPoints<NRays>& points) {
+  points.noalias() =
+      rays.origins() +
+      (rays.directions().array().colwise() * solutions.array()).matrix();
+}
+
+
 int main() {
-  RaySet<Dynamic> set(4);
-  set << 1,2,3,4,5,6,
-         1,2,3,4,5,6,
-         1,2,3,4,5,6,
-         1,2,3,4,5,6;
-  std::cout << set.origins() << "\n";
-  std::cout << set.directions() << "\n";
+  RaySet<Dynamic> rays = RaySet<10>::Zero();
+  rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(10, 1);
+
+  for (int i = 0; i < rays.rays(); ++i) {
+    auto dir = 2 * M_PI * i / rays.rays();
+    rays.directions()(i, 0) = sin(dir);
+    rays.directions()(i, 1) = cos(dir);
+    rays.directions()(i, 2) = -1;
+  }
+
+  std::cout << rays << "\n";
+
+  PlaneIntersector ground({0, 0, 1}, {0, 0, 0});
+
+  IntersectionSolutions<Dynamic> solutions(rays.rays());
+  ground.computeSolution(rays, solutions);
+  std::cout << solutions << "\n";
+
+  IntersectionPoints<Dynamic> points(rays.rays(), 3);
+  computeIntersections(rays, solutions, points);
+  std::cout << points << "\n";
 
   return 0;
 }

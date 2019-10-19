@@ -1,4 +1,4 @@
-CXX      := -c++
+CXX      := c++
 CXXFLAGS := -std=c++17 -pedantic-errors -Wall -Wextra -Werror
 LDFLAGS  := -L/usr/lib -lstdc++ -lm
 BUILD    := ./build
