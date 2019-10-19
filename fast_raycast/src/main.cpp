@@ -5,7 +5,7 @@
 using namespace Eigen;
 
 template <int NRays = Dynamic>
-class RaySet : public Matrix<float, NRays, 6> {
+class Rays : public Matrix<float, NRays, 6> {
  private:
   using Base = Matrix<float, NRays, 6>;
 
@@ -23,9 +23,9 @@ class RaySet : public Matrix<float, NRays, 6> {
 
  public:
   template <typename OtherDerived>
-  RaySet(const Eigen::MatrixBase<OtherDerived>& other) : Base(other) {}
+  Rays(const Eigen::MatrixBase<OtherDerived>& other) : Base(other) {}
 
-  RaySet(Index rows) : Base(rows, 6) {}
+  Rays(Index rows) : Base(rows, 6) {}
 
   template <typename OtherDerived>
   Base& operator=(const Eigen::MatrixBase<OtherDerived>& other) {
@@ -59,7 +59,7 @@ class PlaneIntersector {
   }
 
   template <int NRays = Dynamic>
-  void computeSolution(RaySet<NRays> const& rays,
+  void computeSolution(Rays<NRays> const& rays,
                        IntersectionSolutions<NRays>& solutions) {
     solutions = (((-rays.origins()).rowwise() + plane_origin) * plane_normal) /
                 (rays.directions() * plane_normal)(0);
@@ -67,7 +67,7 @@ class PlaneIntersector {
 };
 
 template <int NRays = Dynamic>
-void computeIntersections(RaySet<NRays> const& rays,
+void computeIntersections(Rays<NRays> const& rays,
                           IntersectionSolutions<NRays> const& solutions,
                           IntersectionPoints<NRays>& points) {
   points.noalias() = rays.origins() +
@@ -75,7 +75,7 @@ void computeIntersections(RaySet<NRays> const& rays,
 }
 
 int main() {
-  RaySet<Dynamic> rays = RaySet<10>::Zero();
+  Rays<Dynamic> rays = Rays<10>::Zero();
   rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(10, 1);
 
   for (int i = 0; i < rays.rays(); ++i) {
