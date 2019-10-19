@@ -21,7 +21,7 @@ class Rays : public Matrix<float, NRays, 6> {
   auto constexpr get_block(size_t col_offrays) { __RAYS__GET_BLOCK }
   auto const constexpr get_block(size_t col_offrays) const { __RAYS__GET_BLOCK }
 
-#undef __RAYS__GET_BLOCKs
+#undef __RAYS__GET_BLOCK
 
  public:
   template <typename OtherDerived>
