@@ -9,13 +9,17 @@ class RaySet : public Matrix<float, NRays, 6> {
  private:
   using Base = Matrix<float, NRays, 6>;
 
-  auto constexpr get_block(size_t col_offrays) {
-    if constexpr (NRays == Dynamic) {
-      return this->block(0, col_offrays, Base::rows(), 3);
-    } else {
-      return ((Base*)this)->block<NRays, 3>(0, col_offrays);
-    }
+#define __RAYS__GET_BLOCK                                  \
+  if constexpr (NRays == Dynamic) {                        \
+    return this->block(0, col_offrays, Base::rows(), 3);   \
+  } else {                                                 \
+    return ((Base*)this)->block<NRays, 3>(0, col_offrays); \
   }
+
+  auto constexpr get_block(size_t col_offrays) { __RAYS__GET_BLOCK }
+  auto const constexpr get_block(size_t col_offrays) const { __RAYS__GET_BLOCK }
+
+#undef __RAYS__GET_BLOCKs
 
  public:
   template <typename OtherDerived>
@@ -30,7 +34,11 @@ class RaySet : public Matrix<float, NRays, 6> {
   }
 
   auto constexpr origins() { return get_block(0); }
+  auto const constexpr origins() const { return get_block(0); }
+
   auto constexpr directions() { return get_block(3); }
+  auto const constexpr directions() const { return get_block(3); }
+
   auto constexpr rays() { return Base::rows(); }
 };
 
@@ -51,7 +59,7 @@ class PlaneIntersector {
   }
 
   template <int NRays = Dynamic>
-  void computeSolution(RaySet<NRays>/*const*/& rays,
+  void computeSolution(RaySet<NRays> const& rays,
                        IntersectionSolutions<NRays>& solutions) {
     solutions = (((-rays.origins()).rowwise() + plane_origin) * plane_normal) /
                 (rays.directions() * plane_normal)(0);
@@ -59,7 +67,7 @@ class PlaneIntersector {
 };
 
 template <int NRays = Dynamic>
-void computeIntersections(RaySet<NRays>/*const*/& rays,
+void computeIntersections(RaySet<NRays> const& rays,
                           IntersectionSolutions<NRays> const& solutions,
                           IntersectionPoints<NRays>& points) {
   points.noalias() = rays.origins() +
