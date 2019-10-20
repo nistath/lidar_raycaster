@@ -26,10 +26,13 @@ O[...,2] += np.linspace(-N/10, 0, N)
 start = time()
 rays = np.hstack((O, R))
 
-
+#Cone specifications
 V = a([[1, 0, 0]]).T
 D = a([[0, 0, -1]]).T
-th = pi/4
+base_diameter = 0.15
+h = 0.31
+# th = pi/4
+th = np.arctan((base_diameter/2)/h)
 M = D @ D.T - cos(th) * np.identity(3)
 
 C2 = []
@@ -76,9 +79,28 @@ P = O.T
 
 delta = (P - V)
 
-c2 = U.T @ M @ U
-c1 = U.T @ M @ delta
-c0 = delta.T @ M @ delta
+# c2 = U.T @ M @ U
+# c1 = U.T @ M @ delta
+# c0 = delta.T @ M @ delta
+#Directly compute diagonal of the matrix products
+c2 = (U.T.dot(M) * U.T).sum(-1)
+c1 = (U.T.dot(M) * delta.T).sum(-1)
+c0 = (delta.T.dot(M) * delta.T).sum(-1)
+
+ddds = np.sqrt(c1**2 - c0*c2)
+
+low_soln = (-c1-ddds)/c2
+high_soln = (-c1+ddds)/c2
+T = np.minimum(low_soln, high_soln)[..., np.newaxis]
+print('T\n', T)
+
+#prune solutions that aren't in bounds of cone we are considering
+height_condition = delta.T @ D + np.multiply(U.T @ D, T)
+satisfies_cond = np.all((height_condition >= 0, height_condition <= h), axis = 0).flatten()
+T = T[satisfies_cond]
+O = O[satisfies_cond]
+R = R[satisfies_cond]
+print('T\n', T)
 
 print('C2\n', C2)
 print('c2\n', c2)
@@ -88,13 +110,13 @@ print('C0\n', C0)
 print('c0\n', c0)
 
 
-assert(np.isclose(C2, c2.diagonal()).all())
-assert(np.isclose(C1, c1.diagonal()).all())
-assert(np.isclose(C0, c0.diagonal()).all())
+assert(np.isclose(C2, c2).all())
+assert(np.isclose(C1, c1).all())
+assert(np.isclose(C0, c0).all())
 
 # Solution for plane
 # T = ((P - O) @ n) / (R @ n)
-points = O + R * T.T
+points = O + R * T
 print(time() - start)
 
 
