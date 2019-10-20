@@ -2,9 +2,9 @@
 #include <eigen3/Eigen/Eigen>
 #include <iostream>
 
-using namespace Eigen;
-
 namespace lcaster {
+
+using namespace Eigen;
 
 template <int NRays = Dynamic>
 class Rays : public Matrix<float, NRays, 6> {
@@ -103,12 +103,15 @@ class Plane {
 }  // namespace Intersection
 }  // namespace lcaster
 
+#include <chrono>
+
 int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  Rays<Dynamic> rays = Rays<10>::Zero();
-  rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(10, 1);
+  constexpr size_t NRays = 10000000;
+  Rays<Dynamic> rays = Rays<NRays>::Zero();
+  rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
 
   for (int i = 0; i < rays.rays(); ++i) {
     auto dir = 2 * M_PI * i / rays.rays();
@@ -117,17 +120,25 @@ int main() {
     rays.directions()(i, 2) = -1;
   }
 
-  std::cout << rays << "\n";
+  // std::cout << rays << "\n";
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
 
   Solutions<Dynamic> solutions(rays.rays());
+
+  auto start1 = std::chrono::high_resolution_clock::now();
   ground.computeSolution(rays, solutions);
-  std::cout << solutions << "\n";
+  auto end1 = std::chrono::high_resolution_clock::now();
+  // std::cout << solutions << "\n";
 
   Points<Dynamic> points(rays.rays(), 3);
+  auto start2 = std::chrono::high_resolution_clock::now();
   computePoints(rays, solutions, points);
-  std::cout << points << "\n";
+  auto end2 = std::chrono::high_resolution_clock::now();
+  // std::cout << points << "\n";
+
+  std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end1 - start1).count() << ",";
+  std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - start2).count() << "\n";
 
   return 0;
 }
