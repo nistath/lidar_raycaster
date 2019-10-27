@@ -83,20 +83,68 @@ namespace Obstacle {
  */
 class Plane {
  public:
-  Matrix<float, 3, 1> plane_normal;
-  Matrix<float, 1, 3> plane_origin;
+  Matrix<float, 3, 1> const normal_;
+  Matrix<float, 1, 3> origin_;
 
   Plane(Vector3f const& normal, Vector3f const& origin)
-      : plane_normal{normal}, plane_origin{origin} {
-    assert(plane_normal.norm() == 1);
+      : normal_{normal}, origin_{origin} {
+    assert(normal_.norm() == 1);
   }
 
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
                        Intersection::Solutions<NRays>& solutions) {
-    solutions = (((-rays.origins()).rowwise() + plane_origin) * plane_normal) /
-                (rays.directions() * plane_normal)(0);
+    solutions = (((-rays.origins()).rowwise() + origin_) * normal_) /
+                (rays.directions() * normal_)(0);
   }
+};
+
+/**
+ * Cone
+ */
+// template <bool BothSides = false, bool LimitHeight = false>
+class Cone {
+ public:
+  Matrix<float, 3, 1> const vertex_;
+  Matrix<float, 3, 1> const direction_;
+  float const height_;
+  float const base_radius_;
+
+  Cone(Vector3f vertex, Vector3f direction, float height, float baseRadius)
+      : vertex_{vertex},
+        direction_{direction},
+        height_{height},
+        base_radius_{baseRadius},
+        M_{direction_ * direction_.transpose() -
+           (height_ / std::hypotf(height_, base_radius_)) *
+               Matrix<float, 3, 3>::Identity()} {}
+
+  template <int NRays = Dynamic>
+  void computeSolution(Rays<NRays> const& rays,
+                       Intersection::Solutions<NRays>& solutions) {
+    // P is 3 by NRays
+    #define P (rays.origins().transpose())
+    // U is 3 by NRays
+    #define U (rays.directions().transpose())
+    // DELTA is 3 by NRays
+    #define DELTA (P.colwise() - vertex_)
+
+    using Coeffs = Intersection::Solutions<NRays>;
+
+    Coeffs c2 = (U.transpose() * M_ * U).diagonal();
+    Coeffs c1 = (U.transpose() * M_ * DELTA).diagonal();
+    Coeffs c0 = (DELTA.transpose() * M_ * DELTA).diagonal();
+
+    #undef P
+    #undef U
+    #undef DELTA
+
+
+    solutions = (-c1 - (c1 * c1 - c0 * c2).sqrt()) / c2;
+  }
+
+ private:
+  Matrix<float, 3, 3> const M_;
 };
 
 }  // namespace Obstacle
@@ -123,11 +171,13 @@ int main() {
   // std::cout << rays << "\n";
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
+  Obstacle::Cone cone({0, 0, 1}, {0, 0, -1}, 0.35, 0.08);
 
   Solutions<Dynamic> solutions(rays.rays());
 
   auto start1 = std::chrono::high_resolution_clock::now();
-  ground.computeSolution(rays, solutions);
+  // ground.computeSolution(rays, solutions);
+  cone.computeSolution(rays, solutions);
   auto end1 = std::chrono::high_resolution_clock::now();
   // std::cout << solutions << "\n";
 
@@ -137,8 +187,14 @@ int main() {
   auto end2 = std::chrono::high_resolution_clock::now();
   // std::cout << points << "\n";
 
-  std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end1 - start1).count() << ",";
-  std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end2 - start2).count() << "\n";
+  std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end1 -
+                                                                    start1)
+                   .count()
+            << ",";
+  std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end2 -
+                                                                    start2)
+                   .count()
+            << "\n";
 
   return 0;
 }
