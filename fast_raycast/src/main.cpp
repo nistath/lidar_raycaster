@@ -123,21 +123,19 @@ class Cone {
   void computeSolution(Rays<NRays> const& rays,
                        Intersection::Solutions<NRays>& solutions) {
     // P is 3 by NRays
-    #define P (rays.origins().transpose())
+    auto P = rays.origins().transpose();
     // U is 3 by NRays
-    #define U (rays.directions().transpose())
-    // DELTA is 3 by NRays
-    Matrix<float, 3, NRays> delta = P.colwise() - vertex_;
+    auto U = rays.directions().transpose();
+    // L is 3 by NRays
+    Matrix<float, 3, NRays> L = P.colwise() - vertex_;
 
     using Coeffs = Intersection::Solutions<NRays>;
 
     Coeffs c2 = (U.transpose() * M_ * U).diagonal();
-    Coeffs c1 = (U.transpose() * M_ * delta).diagonal();
-    Coeffs c0 = (delta.transpose() * M_ * delta).diagonal();
+    Coeffs c1 = (U.transpose() * M_ * L).diagonal();
+    Coeffs c0 = (L.transpose() * M_ * L).diagonal();
 
     solutions = (-c1 - (c1 * c1 - c0 * c2).sqrt()) / c2;
-    #undef P
-    #undef U
   }
 
  private:
