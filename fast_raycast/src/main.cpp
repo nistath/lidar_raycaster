@@ -101,8 +101,10 @@ class Plane {
 
 /**
  * Cone
+ *
+ * Notes for implementation are found at
+ * https://www.geometrictools.com/Documentation/IntersectionLineCone.pdf
  */
-// template <bool BothSides = false, bool LimitHeight = false>
 class Cone {
  public:
   Matrix<float, 3, 1> const vertex_;
@@ -122,12 +124,10 @@ class Cone {
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
                        Intersection::Solutions<NRays>& solutions) {
-    // P is 3 by NRays
+    // Below matrices are shape (3, NRays)
     auto P = rays.origins().transpose();
-    // U is 3 by NRays
     auto U = rays.directions().transpose();
-    // L is 3 by NRays
-    Matrix<float, 3, NRays> L = P.colwise() - vertex_;
+    Matrix<float, 3, NRays> L = P.colwise() - vertex_;  // Δ from notes
 
     using Coeffs = Intersection::Solutions<NRays>;
 
