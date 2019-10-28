@@ -107,7 +107,7 @@ class Plane {
  */
 class Cone {
  public:
-  Matrix<float, 3, 1> const vertex_;
+  Matrix<float, 3, 1> vertex_;
   Matrix<float, 3, 1> const direction_;
   float const height_;
   float const base_radius_;
@@ -123,7 +123,7 @@ class Cone {
 
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
-                       Intersection::Solutions<NRays>& solutions) {
+                       Intersection::Solutions<NRays>& solutions) const {
     // Below matrices are shape (3, NRays)
     auto P = rays.origins().transpose();
     auto U = rays.directions().transpose();
@@ -152,21 +152,31 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  constexpr size_t NRays = 10000000;
+  constexpr float HFOV = M_PI / 8;
+  constexpr float HBIAS = -HFOV / 2;
+  constexpr float VFOV = M_PI / 6;
+  constexpr float VBIAS = -M_PI / 2;
+
+  constexpr int NRings = 20;
+  constexpr int NPoints = 20;
+  constexpr int NRays = NPoints * NRings;
   Rays<Dynamic> rays = Rays<NRays>::Zero();
   rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
 
-  for (int i = 0; i < rays.rays(); ++i) {
-    auto dir = 2 * M_PI * i / rays.rays();
-    rays.directions()(i, 0) = sin(dir);
-    rays.directions()(i, 1) = cos(dir);
-    rays.directions()(i, 2) = -1;
+  for (int ring = 0; ring < NRings; ++ring) {
+    const float z = -2 * cos(VFOV * ring / NRings + VBIAS) - 0.5;
+    for (int i = 0; i < NPoints; ++i) {
+      const float phase = HFOV * i / NPoints + HBIAS;
+      rays.directions()(ring * NRings + i, 0) = cos(phase);
+      rays.directions()(ring * NRings + i, 1) = sin(phase);
+      rays.directions()(ring * NRings + i, 2) = z;
+    }
   }
 
-  // std::cout << rays << "\n";
+  rays.directions().rowwise().normalize();
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
-  Obstacle::Cone cone({0, 0, 1}, {0, 0, -1}, 0.35, 0.08);
+  Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
 
   Solutions<Dynamic> solutions(rays.rays());
 
@@ -182,14 +192,14 @@ int main() {
   auto end2 = std::chrono::high_resolution_clock::now();
   // std::cout << points << "\n";
 
-  std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end1 -
+  std::cerr << std::chrono::duration_cast<std::chrono::nanoseconds>(end1 -
                                                                     start1)
                    .count()
             << ",";
-  std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end2 -
+  std::cerr << std::chrono::duration_cast<std::chrono::nanoseconds>(end2 -
                                                                     start2)
                    .count()
-            << "\n";
+            << std::endl;
 
   return 0;
 }
