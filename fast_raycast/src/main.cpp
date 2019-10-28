@@ -9,6 +9,24 @@ using namespace Eigen;
 using el_t = float;
 using Vector3e = Matrix<el_t, 3, 1>;
 
+constexpr el_t nan(const char* tagp = "") {
+  if constexpr (std::is_same_v<float, el_t>) {
+    return std::nanf(tagp);
+  }
+
+  if constexpr (std::is_same_v<double, el_t>) {
+    return std::nan(tagp);
+  }
+
+  if constexpr (std::is_same_v<long double, el_t>) {
+    return std::nanl(tagp);
+  }
+
+  static_assert(std::is_same_v<float, el_t> || std::is_same_v<double, el_t> ||
+                    std::is_same_v<long double, el_t>,
+                "Invalid el_t!");
+}
+
 template <int NRays = Dynamic>
 class Rays : public Matrix<el_t, NRays, 6> {
  private:
@@ -89,8 +107,7 @@ class Plane {
   Matrix<el_t, 3, 1> const normal_;
   Matrix<el_t, 1, 3> origin_;
 
-  Plane(Vector3e normal, Vector3e origin)
-      : normal_{normal}, origin_{origin} {
+  Plane(Vector3e normal, Vector3e origin) : normal_{normal}, origin_{origin} {
     assert(normal_.norm() == 1);
   }
 
@@ -126,7 +143,8 @@ class Cone {
 
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
-                       Intersection::Solutions<NRays>& solutions) const {
+                       Intersection::Solutions<NRays>& solutions,
+                       bool heightLimit = true) const {
     // Below matrices are shape (3, NRays)
     auto P = rays.origins().transpose();
     auto U = rays.directions().transpose();
@@ -138,8 +156,18 @@ class Cone {
     Coeffs c1 = (U.transpose() * M_ * L).diagonal();
     Coeffs c0 = (L.transpose() * M_ * L).diagonal();
 
-    auto sq = (c1 * c1 - c0 * c2).sqrt();
-    solutions = ((-c1 - sq) / c2).min((-c1 + sq) / c2);
+    auto dis = (c1 * c1 - c0 * c2).sqrt();
+    auto sol = ((-c1 - dis) / c2).min((-c1 + dis) / c2);
+
+    if (heightLimit) {
+      auto hit_height = (L.transpose() * direction_).array() +
+                        (sol * (U.transpose() * direction_).array());
+
+      solutions =
+          ((0 <= hit_height) && (hit_height <= height_)).select(sol, nan());
+    } else {
+      solutions = sol;
+    }
   }
 
  private:
@@ -205,7 +233,7 @@ int main() {
                    .count()
             << std::endl;
 
-  std::cout << solutions;
+  // std::cout << solutions;
 
   return 0;
 }
