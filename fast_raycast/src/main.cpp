@@ -135,7 +135,8 @@ class Cone {
     Coeffs c1 = (U.transpose() * M_ * L).diagonal();
     Coeffs c0 = (L.transpose() * M_ * L).diagonal();
 
-    solutions = (-c1 - (c1 * c1 - c0 * c2).sqrt()) / c2;
+    auto sq = (c1 * c1 - c0 * c2).sqrt();
+    solutions = ((-c1 - sq) / c2).min((-c1 + sq) / c2);
   }
 
  private:
@@ -167,9 +168,9 @@ int main() {
     const float z = -2 * cos(VFOV * ring / NRings + VBIAS) - 0.5;
     for (int i = 0; i < NPoints; ++i) {
       const float phase = HFOV * i / NPoints + HBIAS;
-      rays.directions()(ring * NRings + i, 0) = cos(phase);
-      rays.directions()(ring * NRings + i, 1) = sin(phase);
-      rays.directions()(ring * NRings + i, 2) = z;
+      rays.directions()(ring * NPoints + i, 0) = cos(phase);
+      rays.directions()(ring * NPoints + i, 1) = sin(phase);
+      rays.directions()(ring * NPoints + i, 2) = z;
     }
   }
 
@@ -200,6 +201,8 @@ int main() {
                                                                     start2)
                    .count()
             << std::endl;
+
+  std::cout << solutions;
 
   return 0;
 }
