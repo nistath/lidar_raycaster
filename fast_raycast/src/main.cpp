@@ -6,10 +6,13 @@ namespace lcaster {
 
 using namespace Eigen;
 
+using el_t = float;
+using Vector3e = Matrix<el_t, 3, 1>;
+
 template <int NRays = Dynamic>
-class Rays : public Matrix<float, NRays, 6> {
+class Rays : public Matrix<el_t, NRays, 6> {
  private:
-  using Base = Matrix<float, NRays, 6>;
+  using Base = Matrix<el_t, NRays, 6>;
 
 #define __RAYS__GET_BLOCK                                  \
   if constexpr (NRays == Dynamic) {                        \
@@ -58,14 +61,14 @@ namespace Intersection {
  *! is the intersection point.
  */
 template <int NRays = Dynamic>
-using Solutions = Array<float, NRays, 1>;
+using Solutions = Array<el_t, NRays, 1>;
 
 /**
  * Points
  *! Provides the point each ray intersects with as computed by some method.
  */
 template <int NRays = Dynamic>
-using Points = Matrix<float, NRays, 3>;
+using Points = Matrix<el_t, NRays, 3>;
 
 template <int NRays = Dynamic>
 void computePoints(Rays<NRays> const& rays,
@@ -83,10 +86,10 @@ namespace Obstacle {
  */
 class Plane {
  public:
-  Matrix<float, 3, 1> const normal_;
-  Matrix<float, 1, 3> origin_;
+  Matrix<el_t, 3, 1> const normal_;
+  Matrix<el_t, 1, 3> origin_;
 
-  Plane(Vector3f const& normal, Vector3f const& origin)
+  Plane(Vector3e normal, Vector3e origin)
       : normal_{normal}, origin_{origin} {
     assert(normal_.norm() == 1);
   }
@@ -107,19 +110,19 @@ class Plane {
  */
 class Cone {
  public:
-  Matrix<float, 3, 1> vertex_;
-  Matrix<float, 3, 1> const direction_;
-  float const height_;
-  float const base_radius_;
+  Matrix<el_t, 3, 1> vertex_;
+  Matrix<el_t, 3, 1> const direction_;
+  el_t const height_;
+  el_t const base_radius_;
 
-  Cone(Vector3f vertex, Vector3f direction, float height, float baseRadius)
+  Cone(Vector3e vertex, Vector3e direction, el_t height, el_t baseRadius)
       : vertex_{vertex},
         direction_{direction},
         height_{height},
         base_radius_{baseRadius},
         M_{direction_ * direction_.transpose() -
            (height_ / std::hypotf(height_, base_radius_)) *
-               Matrix<float, 3, 3>::Identity()} {}
+               Matrix<el_t, 3, 3>::Identity()} {}
 
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
@@ -127,7 +130,7 @@ class Cone {
     // Below matrices are shape (3, NRays)
     auto P = rays.origins().transpose();
     auto U = rays.directions().transpose();
-    Matrix<float, 3, NRays> L = P.colwise() - vertex_;  // Δ from notes
+    Matrix<el_t, 3, NRays> L = P.colwise() - vertex_;  // Δ from notes
 
     using Coeffs = Intersection::Solutions<NRays>;
 
@@ -140,7 +143,7 @@ class Cone {
   }
 
  private:
-  Matrix<float, 3, 3> const M_;
+  Matrix<el_t, 3, 3> const M_;
 };
 
 }  // namespace Obstacle
@@ -153,10 +156,10 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  constexpr float HFOV = M_PI / 8;
-  constexpr float HBIAS = -HFOV / 2;
-  constexpr float VFOV = M_PI / 6;
-  constexpr float VBIAS = -M_PI / 2;
+  constexpr el_t HFOV = M_PI / 8;
+  constexpr el_t HBIAS = -HFOV / 2;
+  constexpr el_t VFOV = M_PI / 6;
+  constexpr el_t VBIAS = -M_PI / 2;
 
   constexpr int NRings = 20;
   constexpr int NPoints = 20;
@@ -165,9 +168,9 @@ int main() {
   rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
 
   for (int ring = 0; ring < NRings; ++ring) {
-    const float z = -2 * cos(VFOV * ring / NRings + VBIAS) - 0.5;
+    const el_t z = -2 * cos(VFOV * ring / NRings + VBIAS) - 0.5;
     for (int i = 0; i < NPoints; ++i) {
-      const float phase = HFOV * i / NPoints + HBIAS;
+      const el_t phase = HFOV * i / NPoints + HBIAS;
       rays.directions()(ring * NPoints + i, 0) = cos(phase);
       rays.directions()(ring * NPoints + i, 1) = sin(phase);
       rays.directions()(ring * NPoints + i, 2) = z;
