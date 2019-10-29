@@ -85,7 +85,6 @@ C2 = np.hstack(C2)
 C1 = np.hstack(C1)
 C0 = np.hstack(C0)
 T = np.hstack(T).T
-print('Told\n', T)
 
 U = R.T
 P = O.T
@@ -109,21 +108,21 @@ assert(np.isclose(c2, C2).all())
 assert(np.isclose(c1, C1).all())
 assert(np.isclose(c0, C0).all())
 
-ddds = np.sqrt(c1**2 - c0*c2)
+ddd = c1**2 - c0*c2
+ddds = np.sqrt(ddd)
+
 
 low_soln = (-c1-ddds)/c2
 high_soln = (-c1+ddds)/c2
-# T = np.minimum(low_soln, high_soln)[..., np.newaxis]
-print('T\n', T)
+T = np.minimum(low_soln, high_soln)[..., np.newaxis]
 
 if True:
     #prune solutions that aren't in bounds of cone we are considering
     height_condition = delta.T @ D + np.multiply(U.T @ D, T)
     satisfies_cond = np.all((height_condition >= 0, height_condition <= h), axis = 0).flatten()
-    T = T[satisfies_cond]
-    O = O[satisfies_cond]
-    R = R[satisfies_cond]
+    T[np.logical_not(satisfies_cond)] = 1337
 print('T\n', T)
+exit()
 rays = np.hstack((O, R))
 
 # Solution for plane
