@@ -160,11 +160,12 @@ class Cone {
     auto sol = ((-c1 - dis) / c2).min((-c1 + dis) / c2);
 
     if (heightLimit) {
-      auto hit_height = (L.transpose() * direction_).array() +
-                        (sol * (U.transpose() * direction_).array());
+      Coeffs sol2 = sol;
+      Coeffs hit_height = (L.transpose() * direction_).array() +
+                          (sol2 * (U.transpose() * direction_).array());
 
       solutions =
-          ((0 <= hit_height) && (hit_height <= height_)).select(sol, nan());
+          ((0 <= hit_height) && (hit_height <= height_)).select(sol2, nan());
     } else {
       solutions = sol;
     }
@@ -189,8 +190,8 @@ int main() {
   constexpr el_t VFOV = M_PI / 6;
   constexpr el_t VBIAS = -M_PI / 2;
 
-  constexpr int NRings = 20;
-  constexpr int NPoints = 20;
+  constexpr int NRings = 20000;
+  constexpr int NPoints = 2000;
   constexpr int NRays = NPoints * NRings;
   Rays<Dynamic> rays = Rays<NRays>::Zero();
   rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);

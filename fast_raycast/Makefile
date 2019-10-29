@@ -27,7 +27,7 @@ build:
 	@mkdir -p $(APP_DIR)
 	@mkdir -p $(OBJ_DIR)
 
-debug: CXXFLAGS += -DDEBUG -g -Og
+debug: CXXFLAGS += -DEIGEN_NO_DEBUG -DDEBUG -g -Og
 debug: all
 
 release: CXXFLAGS += -O3 -ffast-math
