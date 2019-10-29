@@ -1,5 +1,6 @@
 # AWSRUN
 log.awsrun
+job_*.tar
 
 # Prerequisites
 *.d

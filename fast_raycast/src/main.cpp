@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <eigen3/Eigen/Eigen>
 #include <iostream>
+#include <optional>
 
 namespace lcaster {
 
@@ -142,9 +143,11 @@ class Cone {
                Matrix<el_t, 3, 3>::Identity()} {}
 
   template <int NRays = Dynamic>
-  void computeSolution(Rays<NRays> const& rays,
-                       Intersection::Solutions<NRays>& solutions,
-                       bool heightLimit = true) const {
+  void computeSolution(
+      Rays<NRays> const& rays,
+      Intersection::Solutions<NRays>& solutions,
+      bool height_limit = true,
+      Intersection::Solutions<NRays>* hit_height_ptr = nullptr) const {
     // Below matrices are shape (3, NRays)
     auto P = rays.origins().transpose();
     auto U = rays.directions().transpose();
@@ -157,17 +160,24 @@ class Cone {
     Coeffs c0 = (L.transpose() * M_ * L).diagonal();
 
     auto dis = (c1 * c1 - c0 * c2).sqrt();
-    auto sol = ((-c1 - dis) / c2).min((-c1 + dis) / c2);
+    solutions = ((-c1 - dis) / c2).min((-c1 + dis) / c2);
 
-    if (heightLimit) {
-      Coeffs sol2 = sol;
-      Coeffs hit_height = (L.transpose() * direction_).array() +
-                          (sol2 * (U.transpose() * direction_).array());
+    {
+      Intersection::Solutions<NRays> hit_height_;
 
-      solutions =
-          ((0 <= hit_height) && (hit_height <= height_)).select(sol2, nan());
-    } else {
-      solutions = sol;
+      if (hit_height_ptr == nullptr) {
+        hit_height_ptr = &hit_height_;
+      }
+
+      Intersection::Solutions<NRays>& hit_height = *hit_height_ptr;
+
+      hit_height = (L.transpose() * direction_).array() +
+                   (solutions * (U.transpose() * direction_).array());
+
+      if (height_limit) {
+        solutions = ((0 <= hit_height) && (hit_height <= height_))
+                        .select(solutions, nan());
+      }
     }
   }
 
@@ -212,10 +222,11 @@ int main() {
   Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
 
   Solutions<Dynamic> solutions(rays.rays());
+  Solutions<Dynamic> hit_height(rays.rays());
 
   auto start1 = std::chrono::high_resolution_clock::now();
   // ground.computeSolution(rays, solutions);
-  cone.computeSolution(rays, solutions);
+  cone.computeSolution(rays, solutions, true, &hit_height);
   auto end1 = std::chrono::high_resolution_clock::now();
   // std::cout << solutions << "\n";
 
