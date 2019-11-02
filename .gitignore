@@ -1,3 +1,7 @@
+# Build
+fast_raycast/build
+fast_raycast/bin
+
 # AWSRUN
 log.awsrun
 job_*.tar

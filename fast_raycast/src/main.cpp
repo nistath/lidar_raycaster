@@ -4,6 +4,14 @@
 #include <limits>
 #include <optional>
 
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#include <pcl/visualization/cloud_viewer.h>
+#pragma GCC diagnostic pop
+
 namespace lcaster {
 
 using namespace Eigen;
@@ -93,14 +101,30 @@ constexpr Solutions<NRays, T> make_solutions(Rays<NRays> const& rays) {
  *! Provides the point each ray intersects with as computed by some method.
  */
 template <int NRays = Dynamic>
-using Points = Matrix<el_t, NRays, 3>;
+using Points = Array<el_t, NRays, 3>;
+
+using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
+
+template <int NRays = Dynamic>
+auto computePoints(Rays<NRays> const& rays, Solutions<NRays> const& solutions) {
+  return rays.origins() +
+         (rays.directions().array().colwise() * solutions).matrix();
+}
 
 template <int NRays = Dynamic>
 void computePoints(Rays<NRays> const& rays,
                    Solutions<NRays> const& solutions,
                    Points<NRays>& points) {
-  points.noalias() = rays.origins() +
-                     (rays.directions().array().colwise() * solutions).matrix();
+  points = computePoints(rays, solutions);
+}
+
+template <int NRays = Dynamic>
+void computePoints(Rays<NRays> const& rays,
+                   Solutions<NRays> const& solutions,
+                   PointCloud& cloud) {
+  cloud.resize(rays.rays());
+  cloud.getMatrixXfMap().block(0, 0, 3, rays.rays()) =
+      computePoints(rays, solutions).transpose();
 }
 
 namespace Obstacle {
@@ -255,8 +279,8 @@ int main() {
   constexpr el_t VFOV = M_PI / 6;
   constexpr el_t VBIAS = -M_PI / 2;
 
-  constexpr int NRings = 20;
-  constexpr int NPoints = 20;
+  constexpr int NRings = 200;
+  constexpr int NPoints = 200;
   constexpr int NRays = NPoints * NRings;
   Rays<Dynamic> rays = Rays<NRays>::Zero();
   rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
@@ -279,32 +303,24 @@ int main() {
   Solutions<Dynamic> solutions(rays.rays());
   Solutions<Dynamic> hit_height(rays.rays());
 
-  auto start1 = std::chrono::high_resolution_clock::now();
-  // ground.computeSolution(rays, solutions);
-  cone.computeSolution(rays, solutions, true, &hit_height);
-  auto end1 = std::chrono::high_resolution_clock::now();
-  // std::cout << solutions << "\n";
-
-  Points<Dynamic> points(rays.rays(), 3);
-  auto start2 = std::chrono::high_resolution_clock::now();
-  computePoints(rays, solutions, points);
-  auto end2 = std::chrono::high_resolution_clock::now();
-  // std::cout << points << "\n";
-
-  std::cerr << std::chrono::duration_cast<std::chrono::nanoseconds>(end1 -
-                                                                    start1)
-                   .count()
-            << ",";
-  std::cerr << std::chrono::duration_cast<std::chrono::nanoseconds>(end2 -
-                                                                    start2)
-                   .count()
-            << std::endl;
-
   World::DV world(ground, {cone});
   World::ObjectIdxs<Dynamic> object;
-  world.computeSolution(rays, solutions, hit_height, object);
+  // world.computeSolution(rays, solutions, hit_height, object);
+  // ground.computeSolution(rays, solutions);
+  cone.computeSolution(rays, solutions);
+  (void)world;
+  Points<Dynamic> points(rays.rays(), 3);
+  computePoints(rays, solutions, points);
 
-  // std::cout << solutions;
+  std::cout << points << "\n";
+
+  PointCloud::Ptr cloud(new PointCloud);
+  computePoints(rays, solutions, *cloud);
+
+  pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
+  viewer.showCloud(cloud);
+  while (!viewer.wasStopped()) {
+  }
 
   return 0;
 }
