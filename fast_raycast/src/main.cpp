@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <eigen3/Eigen/Eigen>
 #include <iostream>
+#include <limits>
 #include <optional>
 
 namespace lcaster {
@@ -69,7 +70,7 @@ class Rays : public Matrix<el_t, NRays, 6> {
   auto constexpr directions() { return get_block(3); }
   auto const constexpr directions() const { return get_block(3); }
 
-  auto constexpr rays() { return Base::rows(); }
+  auto constexpr rays() const { return Base::rows(); }
 };
 
 namespace Intersection {
@@ -79,8 +80,13 @@ namespace Intersection {
  *! Provides the scalar `t` for each ray such that direction * t + origin
  *! is the intersection point.
  */
-template <int NRays = Dynamic>
-using Solutions = Array<el_t, NRays, 1>;
+template <int NRays = Dynamic, typename T = el_t>
+using Solutions = Array<T, NRays, 1>;
+
+template <int NRays = Dynamic, typename T = el_t>
+constexpr Solutions<NRays, T> make_solutions(Rays<NRays> const& rays) {
+  return {rays.rays(), 1};
+}
 
 /**
  * Points
@@ -114,7 +120,7 @@ class Plane {
 
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
-                       Intersection::Solutions<NRays>& solutions) {
+                       Intersection::Solutions<NRays>& solutions) const {
     solutions = (((-rays.origins()).rowwise() + origin_) * normal_) /
                 (rays.directions() * normal_)(0);
   }
@@ -186,6 +192,55 @@ class Cone {
 };
 
 }  // namespace Obstacle
+
+namespace World {
+
+template <int NRays = Dynamic, typename idx_t = size_t>
+using ObjectIdxs = Solutions<NRays, idx_t>;
+
+class DV {
+ public:
+  Obstacle::Plane plane_;
+  std::vector<Obstacle::Cone> cones_;
+
+  DV(Obstacle::Plane plane, std::initializer_list<Obstacle::Cone> cones)
+      : plane_{plane}, cones_{cones} {}
+
+  DV() : DV{{{0, 0, 1}, {0, 0, 0}}, {}} {}
+
+  template <int NRays = Dynamic>
+  void computeSolution(Rays<NRays> const& rays,
+                       Solutions<NRays>& solutions,
+                       Solutions<NRays>& hit_height,
+                       ObjectIdxs<NRays>& object) const {
+    Solutions<NRays> solutions_temp = make_solutions(rays);
+    Solutions<NRays> hit_height_temp = make_solutions(rays);
+
+    using ObjectIdxs_T = std::remove_reference_t<decltype(object)>;
+    using idx_t = typename ObjectIdxs_T::Scalar;
+    object = ObjectIdxs_T::Constant(rays.rays(), 1,
+                                    std::numeric_limits<idx_t>::max());
+    plane_.computeSolution(rays, solutions);
+
+    for (size_t c = 0; c < cones_.size(); ++c) {
+      auto const& cone = cones_[c];
+      cone.computeSolution(rays, solutions_temp, true, &hit_height_temp);
+
+      for (int i = 0; i < rays.rays(); ++i) {
+        if (solutions_temp[i] > solutions[i]) {
+          continue;
+        }
+
+        solutions[i] = solutions_temp[i];
+        hit_height[i] = hit_height_temp[i];
+        object[i] = c;
+      }
+    }
+  }
+};
+
+}  // namespace World
+
 }  // namespace Intersection
 }  // namespace lcaster
 
@@ -200,8 +255,8 @@ int main() {
   constexpr el_t VFOV = M_PI / 6;
   constexpr el_t VBIAS = -M_PI / 2;
 
-  constexpr int NRings = 20000;
-  constexpr int NPoints = 2000;
+  constexpr int NRings = 20;
+  constexpr int NPoints = 20;
   constexpr int NRays = NPoints * NRings;
   Rays<Dynamic> rays = Rays<NRays>::Zero();
   rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
@@ -244,6 +299,10 @@ int main() {
                                                                     start2)
                    .count()
             << std::endl;
+
+  World::DV world(ground, {cone});
+  World::ObjectIdxs<Dynamic> object;
+  world.computeSolution(rays, solutions, hit_height, object);
 
   // std::cout << solutions;
 
