@@ -144,9 +144,10 @@ class Plane {
 
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
-                       Intersection::Solutions<NRays>& solutions) const {
-    solutions = (((-rays.origins()).rowwise() + origin_) * normal_) /
-                (rays.directions() * normal_)(0);
+                       Solutions<NRays>& solutions) const {
+    solutions =
+        (((-rays.origins()).rowwise() + origin_).matrix() * normal_).array() /
+        (rays.directions().matrix() * normal_).array();
   }
 };
 
@@ -306,13 +307,11 @@ int main() {
   World::DV world(ground, {cone});
   World::ObjectIdxs<Dynamic> object;
   // world.computeSolution(rays, solutions, hit_height, object);
-  // ground.computeSolution(rays, solutions);
-  cone.computeSolution(rays, solutions);
+  ground.computeSolution(rays, solutions);
+  // cone.computeSolution(rays, solutions);
   (void)world;
-  Points<Dynamic> points(rays.rays(), 3);
-  computePoints(rays, solutions, points);
-
-  std::cout << points << "\n";
+  // Points<Dynamic> points(rays.rays(), 3);
+  // computePoints(rays, solutions, points);
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
