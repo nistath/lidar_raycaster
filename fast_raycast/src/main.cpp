@@ -252,7 +252,8 @@ class DV {
       cone.computeSolution(rays, solutions_temp, true, &hit_height_temp);
 
       for (int i = 0; i < rays.rays(); ++i) {
-        if (solutions_temp[i] > solutions[i]) {
+        if (std::isnan(solutions[i]) || std::isnan(solutions_temp[i]) ||
+            solutions_temp[i] > solutions[i]) {
           continue;
         }
 
@@ -306,15 +307,19 @@ int main() {
 
   World::DV world(ground, {cone});
   World::ObjectIdxs<Dynamic> object;
-  // world.computeSolution(rays, solutions, hit_height, object);
-  ground.computeSolution(rays, solutions);
-  // cone.computeSolution(rays, solutions);
-  (void)world;
-  // Points<Dynamic> points(rays.rays(), 3);
-  // computePoints(rays, solutions, points);
+  world.computeSolution(rays, solutions, hit_height, object);
+  // ground.computeSolution(rays, solutions);
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
+
+  if (false) {
+    cone.computeSolution(rays, solutions);
+    PointCloud::Ptr cloud2(new PointCloud);
+    computePoints(rays, solutions, *cloud2);
+
+    *cloud += *cloud2;
+  }
 
   pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
   viewer.showCloud(cloud);
