@@ -275,9 +275,9 @@ class Lidar {
       this->rays_.origins() = this->origin_.transpose().replicate(num_rays, 1);
 
       for (int laser = 0; laser < elev_angles.size(); laser ++){
-        const el_t z = sin(elev_angles[laser]);
+        const el_t z = sin(elev_angles[laser]*M_PI/180.0);
         for (int i = 0; i < horizontal_lasers; i++){
-          el_t phase = i*this->angular_resolution_;
+          el_t phase = i*(this->angular_resolution_*M_PI/180.0);
           this->rays_.directions()(laser * horizontal_lasers + i, 0) = cos(phase);
           this->rays_.directions()(laser * horizontal_lasers + i, 1) = sin(phase);
           this->rays_.directions()(laser * horizontal_lasers + i, 2) = z;
@@ -340,7 +340,7 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  World::Lidar vlp32 = World::Lidar(Vector3e(0,1,0), 32, 0.2);
+  World::Lidar vlp32 = World::Lidar(Vector3e(0,0,0), 32, 0.2);
   vlp32.setRays("../sensor_info/VLP32_LaserInfo.csv");
   Rays<Dynamic> rays = vlp32.rays();
 
