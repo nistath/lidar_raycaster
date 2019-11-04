@@ -55,6 +55,8 @@ class Rays : public Matrix<el_t, NRays, 6> {
 #undef __RAYS__GET_BLOCK
 
  public:
+  Rays(): Base(1,6) {}
+
   template <typename OtherDerived>
   Rays(const Eigen::MatrixBase<OtherDerived>& other) : Base(other) {}
 
@@ -222,6 +224,68 @@ namespace World {
 template <int NRays = Dynamic, typename idx_t = size_t>
 using ObjectIdxs = Solutions<NRays, idx_t>;
 
+class Lidar {
+  public:
+    Vector3e origin_;
+    int num_lasers_;
+    //angular resolution in degrees
+    el_t angular_resolution_;
+    std::vector<el_t> elev_angles;
+    Rays<Dynamic> rays_;
+
+    Lidar() : Lidar{{0,0,0}, 1, 1} {}
+
+    Lidar(Vector3e origin, int num_lasers, el_t angular_resolution)
+          : origin_{origin}, num_lasers_{num_lasers},
+            angular_resolution_{angular_resolution} {}
+
+    Rays<Dynamic> rays() { return this->rays_; }
+
+    Vector3e origin() { return this->origin_; }
+
+    void setRays(std::string csv){
+      /*
+        Create Rays object from LiDAR calibration info
+        Assumes data in CSV format, with 1st column being laser
+        number and second column being elevation angle
+      */
+      // Read file, parse elevation angles
+      std::ifstream file (csv);
+      std::string headers;
+      getline(file, headers);
+      std::string laser_info[this->num_lasers_ - 1];
+      std::string container;
+      std::stringstream intermediate;
+      std::vector<std::string> split_info;
+      while (getline(file, container)){
+        intermediate << container;
+        while (getline(intermediate, container, ',')){
+          split_info.push_back(container);
+        }
+        intermediate.clear();
+        elev_angles.push_back(stof(split_info[1]));
+        split_info.clear();
+      }
+
+      //Create unit vectors
+      int horizontal_lasers = 360/this->angular_resolution_;
+      int num_rays = this->num_lasers_ * horizontal_lasers;
+      this->rays_ = Rays(num_rays);
+      this->rays_.origins() = this->origin_.transpose().replicate(num_rays, 1);
+
+      for (int laser = 0; laser < elev_angles.size(); laser ++){
+        const el_t z = sin(elev_angles[laser]);
+        for (int i = 0; i < horizontal_lasers; i++){
+          el_t phase = i*this->angular_resolution_;
+          this->rays_.directions()(laser * horizontal_lasers + i, 0) = cos(phase);
+          this->rays_.directions()(laser * horizontal_lasers + i, 1) = sin(phase);
+          this->rays_.directions()(laser * horizontal_lasers + i, 2) = z;
+        }
+      }
+      this->rays_.directions().rowwise().normalize();
+    }
+};
+
 class DV {
  public:
   Obstacle::Plane plane_;
@@ -274,28 +338,32 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  constexpr el_t HFOV = M_PI / 8;
-  constexpr el_t HBIAS = -HFOV / 2;
-  constexpr el_t VFOV = M_PI / 6;
-  constexpr el_t VBIAS = -M_PI / 2;
+  World::Lidar vlp32 = World::Lidar(Vector3e(0,1,0), 32, 0.2);
+  vlp32.setRays("../sensor_info/VLP32_LaserInfo.csv");
+  Rays<Dynamic> rays = vlp32.rays();
 
-  constexpr int NRings = 200;
-  constexpr int NPoints = 200;
-  constexpr int NRays = NPoints * NRings;
-  Rays<Dynamic> rays = Rays<NRays>::Zero();
-  rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
-
-  for (int ring = 0; ring < NRings; ++ring) {
-    const el_t z = -2 * cos(VFOV * ring / NRings + VBIAS) - 0.5;
-    for (int i = 0; i < NPoints; ++i) {
-      const el_t phase = HFOV * i / NPoints + HBIAS;
-      rays.directions()(ring * NPoints + i, 0) = cos(phase);
-      rays.directions()(ring * NPoints + i, 1) = sin(phase);
-      rays.directions()(ring * NPoints + i, 2) = z;
-    }
-  }
-
-  rays.directions().rowwise().normalize();
+  // constexpr el_t HFOV = M_PI / 8;
+  // constexpr el_t HBIAS = -HFOV / 2;
+  // constexpr el_t VFOV = M_PI / 6;
+  // constexpr el_t VBIAS = -M_PI / 2;
+  //
+  // constexpr int NRings = 200;
+  // constexpr int NPoints = 200;
+  // constexpr int NRays = NPoints * NRings;
+  // Rays<Dynamic> rays = Rays<NRays>::Zero();
+  // rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
+  //
+  // for (int ring = 0; ring < NRings; ++ring) {
+  //   const el_t z = -2 * cos(VFOV * ring / NRings + VBIAS) - 0.5;
+  //   for (int i = 0; i < NPoints; ++i) {
+  //     const el_t phase = HFOV * i / NPoints + HBIAS;
+  //     rays.directions()(ring * NPoints + i, 0) = cos(phase);
+  //     rays.directions()(ring * NPoints + i, 1) = sin(phase);
+  //     rays.directions()(ring * NPoints + i, 2) = z;
+  //   }
+  // }
+  //
+  // rays.directions().rowwise().normalize();
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
   Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
@@ -312,7 +380,7 @@ int main() {
   Points<Dynamic> points(rays.rays(), 3);
   computePoints(rays, solutions, points);
 
-  std::cout << points << "\n";
+  // std::cout << points << "\n";
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
