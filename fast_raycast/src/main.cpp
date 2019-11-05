@@ -4,6 +4,9 @@
 #include <limits>
 #include <optional>
 
+#include <string>
+
+
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
@@ -112,15 +115,13 @@ auto computePoints(Rays<NRays> const& rays, Solutions<NRays> const& solutions) {
 }
 
 template <int NRays = Dynamic>
-void computePoints(Rays<NRays> const& rays,
-                   Solutions<NRays> const& solutions,
+void computePoints(Rays<NRays> const& rays, Solutions<NRays> const& solutions,
                    Points<NRays>& points) {
   points = computePoints(rays, solutions);
 }
 
 template <int NRays = Dynamic>
-void computePoints(Rays<NRays> const& rays,
-                   Solutions<NRays> const& solutions,
+void computePoints(Rays<NRays> const& rays, Solutions<NRays> const& solutions,
                    PointCloud& cloud) {
   cloud.resize(rays.rays());
   cloud.getMatrixXfMap().block(0, 0, 3, rays.rays()) =
@@ -174,8 +175,7 @@ class Cone {
 
   template <int NRays = Dynamic>
   void computeSolution(
-      Rays<NRays> const& rays,
-      Intersection::Solutions<NRays>& solutions,
+      Rays<NRays> const& rays, Intersection::Solutions<NRays>& solutions,
       bool height_limit = true,
       Intersection::Solutions<NRays>* hit_height_ptr = nullptr) const {
     // Below matrices are shape (3, NRays)
@@ -233,8 +233,7 @@ class DV {
   DV() : DV{{{0, 0, 1}, {0, 0, 0}}, {}} {}
 
   template <int NRays = Dynamic>
-  void computeSolution(Rays<NRays> const& rays,
-                       Solutions<NRays>& solutions,
+  void computeSolution(Rays<NRays> const& rays, Solutions<NRays>& solutions,
                        Solutions<NRays>& hit_height,
                        ObjectIdxs<NRays>& object) const {
     Solutions<NRays> solutions_temp = make_solutions(rays);
@@ -266,6 +265,99 @@ class DV {
 }  // namespace World
 
 }  // namespace Intersection
+
+namespace Metrics {
+
+using namespace Intersection;
+
+template <int NRays>
+void coneHeightMetric(Obstacle::Cone& cone, Points<NRays>& points) {
+  (void)cone;
+  (void)points;
+
+  // ENTER YOUR CODE HERE
+
+  /*first to get each point XYZ from the points matrix */
+  /* get the number of rows in the matrix points   */
+
+  int rownumber = points.rows();
+
+  /*then to setup a line with two points defined from the cone to be project on
+  point A could be the vertix
+  pint B could be the point at the the base of the cone, which is vertex +
+  direction times height */
+  Vector3e A = cone.vertex_;
+  Vector3e B = cone.vertex_ + cone.height_ * cone.direction_;
+
+  /* then use the projection equation to get the XYZ values from the solution
+   * and assign into a new matrix called heightmetrix points      */
+  // Computation of the coordinates of P
+  
+  
+
+
+MatrixXf ProjPoints(rownumber,3);
+// ProjPoints << MatrixXf::Zero(rownumber,3);
+
+
+  // std::cout<< ProjPoints << "n/n/";
+
+int j = 0;
+  for (int i = 0; i < points.rows(); ++i) {
+    // The most inefficient version in the world (to be verified)
+    Vector3e M = points.row(i);
+    Vector3e AB = B - A;
+    Vector3e AM = M - A;
+    double norm = AB.norm();
+    double dot = AB.dot(AM);
+    double d1 = dot / norm;
+    Vector3e AP = AB / d1;
+    Vector3e P = AP - A;
+
+// here I tried to eliminate nan from the matrix by applying if condition for the P dot product of P to be a number, at least not nan
+
+
+  if ( P.dot(P) > 0.0 | P.dot(P) < 0.0) {
+    ProjPoints.row(j) = P.transpose();
+   j = j + 1;
+
+   }
+
+
+  // At the end I need to resize the ProjPoints matrix to make remove the 0 0 0 at the end. 
+  // Apparantly if you do not add vectors to the matrix, it initially is stored as 0 0 0 for each row
+
+  }
+// that is the size of the actual matrix with valid points in
+std::cout << j << endl << endl;
+int actualrowsize = j ;
+std::cout << actualrowsize << endl << endl;
+
+// now resize to the valid matrix size
+ProjPoints.resize(actualrowsize,3);
+  /* assign weight value on the points based on the section separation along the
+   * cone projection line  */
+
+// print out the ProjPoints matrix
+std::cout << ProjPoints << endl << endl;
+std::cout << ProjPoints.rows() << endl << endl;
+  
+
+// this can print selected region of the rows
+ // for (int k=2169; k < 2172 ; ++k )  {
+ //  std::cout << ProjPoints.row(k) << endl << endl;   }
+
+ // try plot the matrix in the XYZ cordinates, it should be basically the projected line
+
+// give weight and counts and bin the matrix so we can give it a weight, with stats on the ditribution on each sections
+
+
+// plot a 1-D line with the weights
+
+
+}
+
+};  // namespace Metrics
 }  // namespace lcaster
 
 #include <chrono>
@@ -312,10 +404,14 @@ int main() {
   Points<Dynamic> points(rays.rays(), 3);
   computePoints(rays, solutions, points);
 
-  std::cout << points << "\n";
+  // std::cout << points << "\n";
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
+
+  Metrics::coneHeightMetric(cone, points);
+
+  return 0;
 
   pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
   viewer.showCloud(cloud);
