@@ -288,6 +288,9 @@ void coneHeightMetric(Obstacle::Cone& cone, Points<NRays>& points) {
   direction times height */
   Vector3e A = cone.vertex_;
   Vector3e B = cone.vertex_ + cone.height_ * cone.direction_;
+  
+
+
 
   /* then use the projection equation to get the XYZ values from the solution
    * and assign into a new matrix called heightmetrix points      */
@@ -302,24 +305,27 @@ MatrixXf ProjPoints(rownumber,3);
 
   // std::cout<< ProjPoints << "n/n/";
 
+ Vector3e AB = B - A;
+ float norm = AB.dot(AB);
+
 int j = 0;
   for (int i = 0; i < points.rows(); ++i) {
     // The most inefficient version in the world (to be verified)
-    Vector3e M = points.row(i);
-    Vector3e AB = B - A;
+    Vector3e M = points.row(i).transpose();
+   
     Vector3e AM = M - A;
-    double norm = AB.norm();
-    double dot = AB.dot(AM);
-    double d1 = dot / norm;
-    Vector3e AP = AB / d1;
-    Vector3e P = AP - A;
+    
+    float dot = AB.dot(AM);
+    float d1 = dot / norm;
+    Vector3e AP = d1 * AB;
+    Vector3e P = AP + A;
 
 // here I tried to eliminate nan from the matrix by applying if condition for the P dot product of P to be a number, at least not nan
 
 
-  if ( P.dot(P) > 0.0 | P.dot(P) < 0.0) {
-    ProjPoints.row(j) = P.transpose();
-   j = j + 1;
+     if ( P.dot(P) > 0.0 ) {
+          ProjPoints.row(j) = P.transpose();
+          j = j + 1;
 
    }
 
@@ -333,6 +339,7 @@ std::cout << j << endl << endl;
 int actualrowsize = j ;
 std::cout << actualrowsize << endl << endl;
 
+
 // now resize to the valid matrix size
 ProjPoints.resize(actualrowsize,3);
   /* assign weight value on the points based on the section separation along the
@@ -341,15 +348,99 @@ ProjPoints.resize(actualrowsize,3);
 // print out the ProjPoints matrix
 std::cout << ProjPoints << endl << endl;
 std::cout << ProjPoints.rows() << endl << endl;
+
+
+std::cout << A << endl << endl;
+std::cout << B << endl << endl;
+std::cout << AB << endl << endl;
+std::cout << norm << endl << endl;
+
+std::cout << points.row(1).transpose() << endl << endl;
   
 
 // this can print selected region of the rows
- // for (int k=2169; k < 2172 ; ++k )  {
- //  std::cout << ProjPoints.row(k) << endl << endl;   }
+// for (int k=0; k < 200 ; ++k )  {
+// std::cout << ProjPoints.row(k) << endl << endl;   }
+
+
+
+// I want to filter out and see how the points are actually looking like
+// I am not sure if the invalid calculation is due to the points themselves
+// It is very important to know
+
+
+// setup initial matrix for sorting out projected points in different section, which can then be given weight for matric evaluation
+
+
+
+MatrixXf UpPoints(actualrowsize,3);
+MatrixXf MiddlePoints(actualrowsize,3);
+MatrixXf LowPoints(actualrowsize,3);
 
  // try plot the matrix in the XYZ cordinates, it should be basically the projected line
+int g1 = 0;
+int g2 = 0;
+int g3 = 0;
+
+float UpZ = cone.height_;
+float MiddleZ = cone.height_*2/3 ;
+float LowZ = cone.height_*1/3 ;
+
+std::cout << cone.height_ << endl << endl;
+
+std::cout << UpZ << endl << endl;
+
+std::cout << MiddleZ<< endl << endl;
+
+std::cout << LowZ << endl << endl;
+
+
+std::cout << ProjPoints(1,2) << endl << endl;
 
 // give weight and counts and bin the matrix so we can give it a weight, with stats on the ditribution on each sections
+//  for (int g = 0; g < actualrowsize; ++ g) {
+//         if ( ProjPoints(g,2)> MiddleZ &&   ProjPoints(g,2) <= UpZ  ) {
+//           UpPoints.row(g1) = ProjPoints.row(g);
+//            g1 = g1 + 1;
+//         }
+//         else if ( ProjPoints(g,2)> LowZ &&   ProjPoints(g,2) <= MiddleZ ) {
+//            MiddlePoints.row(g2) = ProjPoints.row(g);
+//            g2 = g2 + 1;
+//         }
+
+//         else if ( ProjPoints(g,2)>= 0 &&   ProjPoints(g,2) <= LowZ  ) {
+//            LowPoints.row(g1) = ProjPoints.row(g);
+//            g3 = g3 + 1;
+//         
+//         }
+//     }
+  
+      for (int g = 0; g < actualrowsize; ++ g) {
+         if ( ProjPoints(g,2)> MiddleZ &&   ProjPoints(g,2) <= UpZ  ) {
+            UpPoints.block<1,3>(g1,0) = ProjPoints.row(g);
+            g1 = g1 + 1;
+         }
+         else if ( ProjPoints(g,2)> LowZ &&   ProjPoints(g,2) <= MiddleZ ) {
+            MiddlePoints.block<1,3>(g1,0) = ProjPoints.row(g);
+            g2 = g2 + 1;
+         }
+
+         else if ( ProjPoints(g,2)>= 0 &&   ProjPoints(g,2) <= LowZ  ) {
+            LowPoints.block<1,3>(g1,0) = ProjPoints.row(g);
+            g3 = g3 + 1;
+         
+         }
+       
+  }
+
+ // get the actual row size in order to resize the sectional matrix for up, middle, and low sections 
+int  actualg1 = g1;
+int  actualg2 = g2;
+int  actualg3 = g3;
+
+std::cout << g1 << endl << endl;
+std::cout << g2 << endl << endl;
+std::cout << g3 << endl << endl;
 
 
 // plot a 1-D line with the weights
