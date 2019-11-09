@@ -229,8 +229,9 @@ class Lidar {
   public:
     Vector3e origin_;
     int num_lasers_;
-    //angular resolution in degrees
+    //angular resolution in radians
     el_t angular_resolution_;
+    // elevation angles in radians
     std::vector<el_t> elev_angles;
     Rays<Dynamic> rays_;
 
@@ -264,23 +265,24 @@ class Lidar {
           split_info.push_back(container);
         }
         intermediate.clear();
-        elev_angles.push_back(stof(split_info[1]));
+        elev_angles.push_back(stof(split_info[1])*M_PI/180.0);
         split_info.clear();
       }
 
       //Create unit vectors
-      int horizontal_lasers = 360/this->angular_resolution_;
-      int num_rays = this->num_lasers_ * horizontal_lasers;
+      int horiz_lasers = 360/this->angular_resolution_;
+      int num_rays = this->num_lasers_ * horiz_lasers;
       this->rays_ = Rays(num_rays);
       this->rays_.origins() = this->origin_.transpose().replicate(num_rays, 1);
 
       for (int laser = 0; laser < elev_angles.size(); laser ++){
-        const el_t z = sin(elev_angles[laser]*M_PI/180.0);
-        for (int i = 0; i < horizontal_lasers; i++){
-          el_t phase = i*(this->angular_resolution_*M_PI/180.0);
-          this->rays_.directions()(laser * horizontal_lasers + i, 0) = cos(phase);
-          this->rays_.directions()(laser * horizontal_lasers + i, 1) = sin(phase);
-          this->rays_.directions()(laser * horizontal_lasers + i, 2) = z;
+        const el_t sin_elev = sin(elev_angles[laser]);
+        const el_t cos_elev = cos(elev_angles[laser]);
+        for (int i = 0; i < horiz_lasers; i++){
+          el_t phase = i*(this->angular_resolution_);
+          this->rays_.directions()(laser * horiz_lasers + i, 0) = cos_elev * cos(phase);
+          this->rays_.directions()(laser * horiz_lasers + i, 1) = cos_elev * sin(phase);
+          this->rays_.directions()(laser * horiz_lasers + i, 2) = sin_elev;
         }
       }
       this->rays_.directions().rowwise().normalize();
@@ -340,7 +342,7 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  World::Lidar vlp32 = World::Lidar(Vector3e(0,0,0), 32, 0.2);
+  World::Lidar vlp32 = World::Lidar(Vector3e(0.0,0.0,0.1), 32, 0.2*M_PI/180.0);
   vlp32.setRays("../sensor_info/VLP32_LaserInfo.csv");
   Rays<Dynamic> rays = vlp32.rays();
 
@@ -364,8 +366,8 @@ int main() {
   //     rays.directions()(ring * NPoints + i, 2) = z;
   //   }
   // }
-  //
   // rays.directions().rowwise().normalize();
+  // std::cout << rays.directions() << std::endl;
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
   Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
