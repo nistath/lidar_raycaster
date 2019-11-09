@@ -276,13 +276,13 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  constexpr el_t HFOV = M_PI / 8;
+  constexpr el_t HFOV = 2 * M_PI;
   constexpr el_t HBIAS = -HFOV / 2;
   constexpr el_t VFOV = M_PI / 6;
   constexpr el_t VBIAS = -M_PI / 2;
 
-  constexpr int NRings = 200;
-  constexpr int NPoints = 200;
+  constexpr int NRings = 32;
+  constexpr int NPoints = 360 / 0.1;
   constexpr int NRays = NPoints * NRings;
   Rays<Dynamic> rays = Rays<NRays>::Zero();
   rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
@@ -301,11 +301,12 @@ int main() {
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
   Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
+  Obstacle::Cone cone2({-1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
 
   Solutions<Dynamic> solutions(rays.rays());
   Solutions<Dynamic> hit_height(rays.rays());
 
-  World::DV world(ground, {cone});
+  World::DV world(ground, {cone, cone2});
   World::ObjectIdxs<Dynamic> object;
   world.computeSolution(rays, solutions, hit_height, object);
   // ground.computeSolution(rays, solutions);
