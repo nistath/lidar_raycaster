@@ -1,8 +1,11 @@
 #include <assert.h>
+#include <algorithm>
 #include <eigen3/Eigen/Eigen>
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <cmath>
+#include <numeric>
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -85,7 +88,7 @@ namespace Intersection {
 
 /**
  * Solutions
- *! Provides the scalar `t` for each ray such that direction * t + origin
+ *! Provides the scalar t for each ray such that direction * t + origin
  *! is the intersection point.
  */
 template <int NRays = Dynamic, typename T = el_t>
@@ -263,6 +266,77 @@ class DV {
       }
     }
   }
+  template <int NRays = Dynamic>
+  void computeRayPerCone(ObjectIdxs<NRays>& object,
+                         std::vector<std::vector<el_t>>& rayPerCone) {
+    rayPerCone.resize(cones_.size());
+    for (int i = 0; i < object.size(); ++i) {
+      if (object[i] >= cones_.size())
+        continue;
+      rayPerCone[object[i]].push_back(i);
+    }
+  }
+
+  void getMeanAndStd(std::vector<std::vector<el_t>> rayPerCone) {
+    // float sum = 0 ;
+    // for (int i = 0 ; i < size; ++i){
+    //   sum += hit_height[i];
+    // }
+
+    // float mean = sum / size;
+
+    // sum = 0;
+    // for (int i = 0 ; i < size; ++i){
+    //   sum += (hit_height[i] - mean)* (hit_height[i] - mean) ;
+    // }
+
+    // float std = sqrt(sum / size);
+
+    // return make_pair(mean , std);
+
+    
+    float sum = 0;
+    float mean = 0;
+    float std = 0;
+    float binWidth =0;
+
+    std::cout<< rayPerCone.size() <<endl;
+
+    for(int c = 0 ; c < rayPerCone.size(); ++c) {
+      std::vector<el_t> heights_in_cone = rayPerCone[c];
+      sum = 0;
+      mean = accumulate(heights_in_cone.begin(), heights_in_cone.end(), 0.0) / heights_in_cone.size();;
+      for (int h =0 ; h < heights_in_cone .size() ; ++h ) {
+        sum += pow((heights_in_cone[h] - mean),2) ;
+      }
+      std = sqrt(sum / heights_in_cone.size());
+      //Scott's rule 
+      binWidth = 3.49*std*pow(heights_in_cone.size(),-1/3);
+
+      std::vector<std::vector<float>> histogram ;
+      std::vector<float> ranges;
+      int bin_no = ceil(heights_in_cone.back() - heights_in_cone.front() / binWidth);
+      std::cout << binWidth << endl;
+      ranges.push_back(binWidth);
+
+      for(int i =1 ; i < bin_no ; ++i){
+        ranges.push_back(ranges[i-1] + binWidth);
+      }
+
+      for (int i =0 ;i <heights_in_cone.size() ; ++i ){
+        for(int j =0; j < ranges.size() ; ++j){
+          if(heights_in_cone[i] < ranges[j] )
+          histogram[j].push_back(heights_in_cone[i]);
+        }
+
+        std::cout<<"add point"<<endl;
+      }
+
+
+
+    }
+
+  }
 };
 
 }  // namespace World
@@ -276,13 +350,13 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  constexpr el_t HFOV = M_PI / 8;
+  constexpr el_t HFOV = 2 * M_PI;
   constexpr el_t HBIAS = -HFOV / 2;
   constexpr el_t VFOV = M_PI / 6;
   constexpr el_t VBIAS = -M_PI / 2;
 
-  constexpr int NRings = 200;
-  constexpr int NPoints = 200;
+  constexpr int NRings = 32;
+  constexpr int NPoints = 360 / 0.1;
   constexpr int NRays = NPoints * NRings;
   Rays<Dynamic> rays = Rays<NRays>::Zero();
   rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
@@ -301,15 +375,23 @@ int main() {
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
   Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
+  Obstacle::Cone cone2({-1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
 
   Solutions<Dynamic> solutions(rays.rays());
   Solutions<Dynamic> hit_height(rays.rays());
 
-  World::DV world(ground, {cone});
+  World::DV world(ground, {cone, cone2});
   World::ObjectIdxs<Dynamic> object;
   world.computeSolution(rays, solutions, hit_height, object);
-  // ground.computeSolution(rays, solutions);
+  std::vector<std::vector<el_t>> rayPerCone;
+  world.computeRayPerCone(object, rayPerCone);
+  //std::cout << hit_height<< std::endl;
+  // for (size_t i = 0; i < rayPerCone.size(); i++) {
+  //   std::cout << rayPerCone[i] << std::endl;
+  // }
 
+  // ground.computeSolution(rays, solutions);
+  world.getMeanAndStd(rayPerCone);
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
 
