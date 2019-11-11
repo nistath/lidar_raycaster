@@ -60,7 +60,8 @@
     "set": "cpp",
     "string": "cpp",
     "string_view": "cpp",
-    "cassert": "cpp"
+    "cassert": "cpp",
+    "*.in": "cpp"
   },
   "python.autoComplete.extraPaths": [
     "/opt/ros/melodic/lib/python2.7/dist-packages"

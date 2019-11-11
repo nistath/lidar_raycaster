@@ -1,11 +1,11 @@
 #include <assert.h>
 #include <algorithm>
+#include <cmath>
 #include <eigen3/Eigen/Eigen>
 #include <iostream>
 #include <limits>
-#include <optional>
-#include <cmath>
 #include <numeric>
+#include <optional>
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -276,66 +276,34 @@ class DV {
       rayPerCone[object[i]].push_back(i);
     }
   }
-
-  void getMeanAndStd(std::vector<std::vector<el_t>> rayPerCone) {
-    // float sum = 0 ;
-    // for (int i = 0 ; i < size; ++i){
-    //   sum += hit_height[i];
-    // }
-
-    // float mean = sum / size;
-
-    // sum = 0;
-    // for (int i = 0 ; i < size; ++i){
-    //   sum += (hit_height[i] - mean)* (hit_height[i] - mean) ;
-    // }
-
-    // float std = sqrt(sum / size);
-
-    // return make_pair(mean , std);
-
-    
-    float sum = 0;
-    float mean = 0;
-    float std = 0;
-    float binWidth =0;
-
-    std::cout<< rayPerCone.size() <<endl;
-
-    for(int c = 0 ; c < rayPerCone.size(); ++c) {
-      std::vector<el_t> heights_in_cone = rayPerCone[c];
-      sum = 0;
-      mean = accumulate(heights_in_cone.begin(), heights_in_cone.end(), 0.0) / heights_in_cone.size();;
-      for (int h =0 ; h < heights_in_cone .size() ; ++h ) {
-        sum += pow((heights_in_cone[h] - mean),2) ;
+  template <int NRays = Dynamic>
+  void printHistograms(std::vector<std::vector<el_t>> rayPerCone,
+                       Solutions<NRays> hit_height) {
+    float bin_width = 0.05;
+    for (int c = 0; c < rayPerCone.size(); ++c) {
+      std::vector<el_t> hit_per_cone(rayPerCone[c].size());
+      for (int i = 0; i < rayPerCone[c].size(); ++i) {
+        hit_per_cone[i] = hit_height[rayPerCone[c][i]];
       }
-      std = sqrt(sum / heights_in_cone.size());
-      //Scott's rule 
-      binWidth = 3.49*std*pow(heights_in_cone.size(),-1/3);
-
-      std::vector<std::vector<float>> histogram ;
-      std::vector<float> ranges;
-      int bin_no = ceil(heights_in_cone.back() - heights_in_cone.front() / binWidth);
-      std::cout << binWidth << endl;
-      ranges.push_back(binWidth);
-
-      for(int i =1 ; i < bin_no ; ++i){
-        ranges.push_back(ranges[i-1] + binWidth);
+      int bin_no = std::round(
+          *std::max_element(hit_per_cone.begin(), hit_per_cone.end()) /
+          bin_width);
+      std::vector<std::vector<el_t>> histogram(bin_no, std::vector<el_t>(0));
+      for (int i = 0; i < hit_per_cone.size(); ++i) {
+        if (histogram[floor(hit_per_cone[i] / bin_width)].size() <
+            ceil(hit_per_cone.size() / bin_no))
+          histogram[floor(hit_per_cone[i] / bin_width)].push_back(
+              hit_per_cone[i]);
       }
-
-      for (int i =0 ;i <heights_in_cone.size() ; ++i ){
-        for(int j =0; j < ranges.size() ; ++j){
-          if(heights_in_cone[i] < ranges[j] )
-          histogram[j].push_back(heights_in_cone[i]);
+      std::cout << "Threshold : " << ceil(hit_per_cone.size() / bin_no) << endl;
+      for (int l = 0; l < histogram.size(); ++l) {
+        std::cout << "Number of points: " << histogram[l].size() << " ";
+        for (int i = 0; i < histogram[l].size(); ++i) {
+          std::cout << "*";
         }
-
-        std::cout<<"add point"<<endl;
+        std::cout << endl;
       }
-
-
-
     }
-
   }
 };
 
@@ -385,13 +353,8 @@ int main() {
   world.computeSolution(rays, solutions, hit_height, object);
   std::vector<std::vector<el_t>> rayPerCone;
   world.computeRayPerCone(object, rayPerCone);
-  //std::cout << hit_height<< std::endl;
-  // for (size_t i = 0; i < rayPerCone.size(); i++) {
-  //   std::cout << rayPerCone[i] << std::endl;
-  // }
 
-  // ground.computeSolution(rays, solutions);
-  world.getMeanAndStd(rayPerCone);
+  world.printHistograms(rayPerCone, hit_height);
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
 
