@@ -280,7 +280,8 @@ void coneHeightMetric(Obstacle::Cone& cone, Points<NRays>& points) {
   /*first to get each point XYZ from the points matrix */
   /* get the number of rows in the matrix points   */
 
-  int rownumber = points.rows();
+  // int rownumber = points.rows();
+ 
 
   /*then to setup a line with two points defined from the cone to be project on
   point A could be the vertix
@@ -289,6 +290,22 @@ void coneHeightMetric(Obstacle::Cone& cone, Points<NRays>& points) {
   Vector3e A = cone.vertex_;
   Vector3e B = cone.vertex_ + cone.height_ * cone.direction_;
   
+
+
+// make an artificial data set in order to test the functions of the matrix filter
+MatrixXf TestSet (10,3);
+TestSet << 1, 1, 0,
+          0.34, -0.21, 0.08,
+          0.34, -0.19, 0.97,
+          0.11, 3, 0.12,
+          -1, 6, 0.14,
+          0.55, 6.99, 0.188,
+          0.33, -9.77, 0.194,
+          0.33, 8.33, 0.195,
+          0.8, 0.2, 0.21,
+          0.23, -0.001, 0.24;
+
+ int rownumber = TestSet.rows();
 
 // initialize a matrix to host the projected points
 MatrixXf ProjPoints(rownumber,3);
@@ -302,10 +319,14 @@ MatrixXf RawPoints(rownumber,3);
 
 int j = 0;
 int s = 0;
-  for (int i = 0; i < points.rows(); ++i) {
+  for (int i = 0; i < rownumber; ++i) {
     
-    Vector3e M = points.row(i).transpose();
-   
+  // bypass the original points set in order to check on the testset
+  //  Vector3e M = points.row(i).transpose();
+  
+    // try on the testset
+    Vector3e M = TestSet.row(i).transpose();
+
     Vector3e AM = M - A;
     
     float dot = AB.dot(AM);
@@ -316,8 +337,9 @@ int s = 0;
 // here I tried to eliminate nan from the matrix by applying if condition for the P dot product of P to be a number, at least not nan
      if ( P.dot(P) > 0.0 ) {
           ProjPoints.row(j) = P.transpose();
-          RawPoints.row(s) = M.transpose();
+          RawPoints.row(s) = TestSet.row(i);
           j = j + 1;
+          s = s + 1;
                            }
   }
 // that is the size of the actual matrix with valid points in
@@ -346,12 +368,12 @@ std::cout << AB << endl << endl;
 std::cout << norm << endl << endl;
 
 // this can print selected region of the rows
-for (int k=0; k < 20 ; ++k )  {
+for (int k=0; k < 10 ; ++k )  {
 std::cout << RawPoints.row(k) << endl << endl; 
   }
 
 // To compare and manually check if the projected points coordinate makes sense
-for (int k=0; k < 20 ; ++k )  {
+for (int k=0; k < 10 ; ++k )  {
 std::cout << ProjPoints.row(k) << endl << endl; 
   }
 
@@ -360,9 +382,9 @@ std::cout << ProjPoints.row(k) << endl << endl;
 // Need to confirm with Nick to see whether the points matrix are corresponding to the points are the cone
 
 // setup initial matrix for sorting out projected points in different section, which can then be given weight for matric evaluation
-MatrixXf UpPoints(actualrowsize,3);
-MatrixXf MiddlePoints(actualrowsize,3);
-MatrixXf LowPoints(actualrowsize,3);
+MatrixXf UpPoints = MatrixXf::Zero(actualrowsize,3);
+MatrixXf MiddlePoints = MatrixXf::Zero(actualrowsize,3);
+MatrixXf LowPoints = MatrixXf::Zero(actualrowsize,3);
 
  // try plot the matrix in the XYZ cordinates, it should be basically the projected line
 int g1 = 0;
@@ -382,22 +404,21 @@ std::cout << MiddleZ<< endl << endl;
 std::cout << LowZ << endl << endl;
 
 
-std::cout << ProjPoints(1,2) << endl << endl;
 
 // give weight and counts and bin the matrix so we can give it a weight, with stats on the ditribution on each sections
   
       for (int g = 0; g < actualrowsize; ++ g) {
          if ( ProjPoints(g,2)> MiddleZ &&   ProjPoints(g,2) <= UpZ  ) {
-            UpPoints.block<1,3>(g1,0) = ProjPoints.row(g);
+            UpPoints.row(g1) = ProjPoints.row(g);
             g1 = g1 + 1;
          }
          else if ( ProjPoints(g,2)> LowZ &&   ProjPoints(g,2) <= MiddleZ ) {
-            MiddlePoints.block<1,3>(g1,0) = ProjPoints.row(g);
+            MiddlePoints.row(g2) = ProjPoints.row(g);
             g2 = g2 + 1;
          }
 
          else if ( ProjPoints(g,2)>= 0 &&   ProjPoints(g,2) <= LowZ  ) {
-            LowPoints.block<1,3>(g1,0) = ProjPoints.row(g);
+            LowPoints.row(g3) = ProjPoints.row(g);
             g3 = g3 + 1;
          
          }
@@ -412,6 +433,22 @@ int  actualg3 = g3;
 std::cout << g1 << endl << endl;
 std::cout << g2 << endl << endl;
 std::cout << g3 << endl << endl;
+
+// resize the rows for these three sections
+// apparently resize functio does wired things, which mess up the original data sets
+// MatrixXf FinalUpPoints = MatrixXf::Zero(actualg1,3);
+// MatrixXf FinalMiddlePoints(actualg2,3);
+// MatrixXf FinalLowPoints(actualg3,3);
+
+// FinalUpPoints.block<actualg1,3>(0,0) += UpPoints.block<actualg1,3>(0,0) ; 
+// FinalMiddlePoints.block<actualg2,3>(0,0) = MiddlePoints.block<actualg2,3>(0,0) ;
+// FinalLowPoints.block<actualg3,3>(0,0) = LowPoints.block<actualg3,3>(0,0) ;
+
+// UpPoints.resize(actualg1,3);
+
+std::cout << UpPoints << endl << endl;
+std::cout << MiddlePoints << endl << endl;
+std::cout << LowPoints << endl << endl;
 
 }
 
