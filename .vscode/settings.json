@@ -61,7 +61,12 @@
     "string": "cpp",
     "string_view": "cpp",
     "cassert": "cpp",
-    "*.in": "cpp"
+    "*.in": "cpp",
+    "csignal": "cpp",
+    "condition_variable": "cpp",
+    "mutex": "cpp",
+    "typeindex": "cpp",
+    "valarray": "cpp"
   },
   "python.autoComplete.extraPaths": [
     "/opt/ros/melodic/lib/python2.7/dist-packages"
