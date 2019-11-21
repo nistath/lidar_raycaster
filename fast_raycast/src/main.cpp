@@ -324,10 +324,9 @@ class DV {
    **/
   float getBinWidth(std::vector<el_t> hit_per_cone, int n) {
     std::sort(hit_per_cone.begin(), hit_per_cone.end());
-    // float q1 = hit_per_cone[0.25 * n];
-    // float q3 = hit_per_cone[0.75 * n];
-    return 2 * (hit_per_cone[0.75 * n] - hit_per_cone[0.25 * n]) /
-           cbrt(hit_per_cone.size());
+    float q1 = hit_per_cone[0.25 * n];
+    float q3 = hit_per_cone[0.75 * n];
+    return 2 * (q3 - q1) / cbrt(hit_per_cone.size());
   }
 };  // namespace World
 
