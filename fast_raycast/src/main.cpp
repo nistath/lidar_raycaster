@@ -267,7 +267,7 @@ class DV {
     }
   }
   template <int NRays = Dynamic>
-  void computeray_per_cone(ObjectIdxs<NRays>& object,
+  void computeRayPerCone(ObjectIdxs<NRays>& object,
                          std::vector<std::vector<el_t>>& ray_per_cone) {
     ray_per_cone.resize(cones_.size());
     for (int i = 0; i < object.size(); ++i) {
@@ -276,65 +276,60 @@ class DV {
       ray_per_cone[object[i]].push_back(i);
     }
   }
-  typedef std::vector<std::vector<el_t>> histogram;
 
+  typedef std::vector<int> Histogram;
   template <int NRays = Dynamic>
-  std::pair<std::vector<histogram>,std::vector< std::vector<el_t>>> createHistograms(std::vector<std::vector<el_t>> ray_per_cone,
-                       Solutions<NRays> hit_height) {
-    
-    std::vector<histogram> histograms(ray_per_cone.size());
-    std::vector< std::vector<el_t>> cones(ray_per_cone.size());
+  std::vector<Histogram> createHistograms(
+      std::vector<std::vector<el_t>> const& ray_per_cone,
+      Solutions<NRays> const& hit_height) {
+    std::vector<Histogram> histograms(ray_per_cone.size());
     for (int c = 0; c < ray_per_cone.size(); ++c) {
       std::vector<el_t> hit_per_cone(ray_per_cone[c].size());
       for (int i = 0; i < ray_per_cone[c].size(); ++i) {
         hit_per_cone[i] = hit_height[ray_per_cone[c][i]];
       }
-      float bin_width = getBinWidth(hit_per_cone , hit_per_cone.size());
+      float bin_width = getBinWidth(hit_per_cone, hit_per_cone.size());
       int bin_no = std::round(
           *std::max_element(hit_per_cone.begin(), hit_per_cone.end()) /
           bin_width);
-      histogram h(bin_no,std::vector<el_t>(0));
+      Histogram histogram(bin_no);
       for (int i = 0; i < hit_per_cone.size(); ++i) {
-        if (h[floor(hit_per_cone[i] / bin_width)].size() <
+        if (histogram[floor(hit_per_cone[i] / bin_width)] <
             ceil(hit_per_cone.size() / bin_no))
-          h[floor(hit_per_cone[i] / bin_width)].push_back(
-              hit_per_cone[i]);
+          histogram[floor(hit_per_cone[i] / bin_width)]++;
       }
-
-      histograms[c] = h;
-      cones[c] = hit_per_cone;
+      histograms[c] = histogram;
     }
-    return std::make_pair(histograms,cones);
+    return histograms;
   }
-  
-  void printHistograms(std::vector<histogram> histograms ,std::vector< std::vector<el_t>> cones) {
-    for (int c = 0; c < histograms.size(); ++c) {
-      histogram  hi = histograms[c];
-      std::vector<el_t> hit_per_cone = cones[c];
-      std::cout << "Threshold : " << ceil(hit_per_cone.size() / hi.size()) << endl;
 
-      for (int l = 0; l < hi.size(); ++l) {
-        std::cout << "Number of points: " << hi[l].size() << " ";
-        for (int i = 0; i < hi[l].size(); ++i) {
+  void printHistograms(std::vector<Histogram> const& histograms) {
+    for (int c = 0; c < histograms.size(); ++c) {
+      std::cout << "Threshold : "
+                << *std::max_element(histograms[c].begin(), histograms[c].end())
+                << endl;
+
+      for (int l = 0; l < histograms[c].size(); ++l) {
+        std::cout << "Number of points: " << histograms[c][l] << " ";
+        for (int i = 0; i < histograms[c][l]; ++i) {
           std::cout << "*";
         }
         std::cout << endl;
       }
-
     }
   }
 
   /**
    * Using Freedman–Diaconis rule
    **/
-  float getBinWidth( std::vector<el_t> hit_per_cone , int n){
+  float getBinWidth(std::vector<el_t> hit_per_cone, int n) {
     std::sort(hit_per_cone.begin(), hit_per_cone.end());
-    float q1 = hit_per_cone[0.25*n];
-    float q3 = hit_per_cone[0.75*n];
-    return 2*(q3-q1) / cbrt(hit_per_cone.size());
+    // float q1 = hit_per_cone[0.25 * n];
+    // float q3 = hit_per_cone[0.75 * n];
+    return 2 * (hit_per_cone[0.75 * n] - hit_per_cone[0.25 * n]) /
+           cbrt(hit_per_cone.size());
   }
-
-};
+};  // namespace World
 
 }  // namespace World
 
@@ -381,10 +376,10 @@ int main() {
   World::ObjectIdxs<Dynamic> object;
   world.computeSolution(rays, solutions, hit_height, object);
   std::vector<std::vector<el_t>> ray_per_cone;
-  world.computeray_per_cone(object, ray_per_cone);
+  world.computeRayPerCone(object, ray_per_cone);
 
-  std::pair<std::vector<World::DV::histogram>,std::vector< std::vector<el_t>>> p = world.createHistograms(ray_per_cone, hit_height);
-  world.printHistograms(p.first , p.second);
+  auto p = world.createHistograms(ray_per_cone, hit_height);
+  world.printHistograms(p);
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
 
