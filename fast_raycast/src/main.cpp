@@ -328,6 +328,44 @@ class DV {
     float q3 = hit_per_cone[0.75 * n];
     return 2 * (q3 - q1) / cbrt(hit_per_cone.size());
   }
+
+
+
+  void compareHistograms(Histogram a , Histogram b ) {
+    //might be useless
+    // int x = std::accumulate(a.begin() , a.end() , 0);
+    // int y = std::accumulate(b.begin() , b.end() , 0);
+
+    //Find which of the 2 has the most elements in it 
+
+    //TODO Find more heuristics than just uniformity
+    float dist_a =0;
+    for(int i =0; i < a.size()-1; ++i) {
+      dist_a += sqrt(a[i]*a[i] + a[i+1]*a[i+1]);
+    }
+
+    float dist_b =0;
+    for(int i =0; i < b.size()-1; ++i) {
+      dist_b += sqrt(b[i]*b[i] + b[i+1]*b[i+1]);
+    }
+    //Might need to verifh Which is H and which is L 
+    float perfect_uniform_a = 1/(a.back() - a.front()+1) +(a.back() + a.front())*sqrt(1 + pow(a.back() - a.front()+1,2)); 
+
+    float perfect_uniform_b = 1/(b.back() - b.front()+1) +(b.back() + b.front())*sqrt(1 + pow(b.back() - b.front()+1,2)); 
+
+    if(abs(perfect_uniform_a - dist_a) > abs(perfect_uniform_b - dist_b)) {
+      // b is more uniform 
+      //do sth
+    }else {
+      // a is more uniform 
+      //do sth
+    }
+
+  }
+
+
+
+
 };  // namespace World
 
 }  // namespace World
