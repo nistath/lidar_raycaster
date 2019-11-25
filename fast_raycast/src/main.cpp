@@ -273,7 +273,7 @@ class Lidar {
     }
 
     // Create unit vectors
-    int horiz_lasers = 360 / this->angular_resolution_;
+    int horiz_lasers = ceil((2*M_PI) / this->angular_resolution_);
     int num_rays = this->num_lasers_ * horiz_lasers;
     this->rays_ = Rays(num_rays);
     this->rays_.origins() = this->origin_.transpose().replicate(num_rays, 1);
