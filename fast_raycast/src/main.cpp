@@ -10,8 +10,6 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #include <pcl/visualization/cloud_viewer.h>
-#include <pcl/visualization/pcl_visualizer.h>
-#include <pcl/filters/extract_indices.h>
 #pragma GCC diagnostic pop
 
 namespace lcaster {
@@ -152,6 +150,7 @@ class Plane {
     solutions =
         (((-rays.origins()).rowwise() + origin_).matrix() * normal_).array() /
         (rays.directions().matrix() * normal_).array();
+    solutions = (solutions < 0).select(nan(), solutions);
   }
 };
 
@@ -195,7 +194,11 @@ class Cone {
     Coeffs c0 = (L.transpose() * M_ * L).diagonal();
 
     auto dis = (c1 * c1 - c0 * c2).sqrt();
-    solutions = ((-c1 - dis) / c2).min((-c1 + dis) / c2);
+    Intersection::Solutions<NRays> soln1 = ((-c1 - dis) / c2);
+    soln1 = (soln1 < 0).select(nan(), soln1);
+    Intersection::Solutions<NRays> soln2 = ((-c1 + dis) / c2);
+    soln2 = (soln2 < 0).select(nan(), soln2);
+    solutions = (soln1 < soln2).select(soln1, soln2);
 
     {
       Intersection::Solutions<NRays> hit_height_;
@@ -349,7 +352,7 @@ int main() {
   using namespace lcaster::Intersection;
 
   World::Lidar vlp32 =
-      World::Lidar(Vector3e(0.0, 0.0, 0.1), 32, 0.2 * M_PI / 180.0);
+      World::Lidar(Vector3e(0.0, 0.0, 0.3), 32, 0.2 * M_PI / 180.0);
   vlp32.setRays("../sensor_info/VLP32_LaserInfo.csv");
   Rays<Dynamic> rays = vlp32.rays();
 
@@ -388,12 +391,6 @@ int main() {
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
-
-  // NaNs removed here, shoud find way to integrate into solution computation
-  std::vector<int> indices;
-  // is_dense = false required to remove NaNs
-  cloud->is_dense = false;
-  pcl::removeNaNFromPointCloud(*cloud, *cloud, indices);
 
   if (false) {
     cone.computeSolution(rays, solutions);
