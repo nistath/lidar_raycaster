@@ -1,0 +1,48 @@
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "",
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "includePath": [
+                "/home/orestis/dut18d_ws/DUT18D_ws/devel/include/**",
+                "/opt/ros/melodic/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/planning/acceleration/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/state_estimation/se_mht/armadillo_matrix/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/cv/cone_depth_map/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/cv/cone_mono_depth/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/perception/cuckoo_time_translator/cuckoo_time_translator/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/perception/cuckoo_time_translator/cuckoo_time_translator_algorithms/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/eskf/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/simulation_amz/fssim_interface/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/cv/image_undistort/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/dependencies/kindr/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/testbed/mavros/libmavconn/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/planning/lmpcc/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/testbed/mavros/mavros/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/testbed/mavros/mavros_msgs/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/state_estimation/se_mht/mht_core/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/state_estimation/se_mht/mht_state_estimators/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/state_estimation/se_mht/mht_viz/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/perception/lidar/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/cv/pointgrey_camera_driver/pointgrey_camera_driver/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/state_estimation/se_mht/problib/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/state_estimation/se_rovio/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/state_estimation/spinnaker_camera_driver/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/testbed/mavros/test_mavros/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/vehicle_interface/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/perception/velodyne/velodyne_driver/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/perception/velodyne/velodyne_laserscan/include/**",
+                "/home/orestis/dut18d_ws/DUT18D_ws/src/perception/velodyne/velodyne_pointcloud/include/**",
+                "/usr/include/**"
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}
