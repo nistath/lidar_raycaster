@@ -276,8 +276,13 @@ class DV {
       ray_per_cone[object[i]].push_back(i);
     }
   }
+  const int HISTOGRAM_SIZE =10;
+  const el_t GAUSSIAN_VAR = 1;
+
+ 
 
   typedef std::vector<int> Histogram;
+  const Histogram optimal_histogram = createOptimalHistogram();
   template <int NRays = Dynamic>
   std::vector<Histogram> createHistograms(
       std::vector<std::vector<el_t>> const& ray_per_cone,
@@ -288,15 +293,12 @@ class DV {
       for (int i = 0; i < ray_per_cone[c].size(); ++i) {
         hit_per_cone[i] = hit_height[ray_per_cone[c][i]];
       }
-      float bin_width = getBinWidth(hit_per_cone, hit_per_cone.size());
-      int bin_no = std::round(
-          *std::max_element(hit_per_cone.begin(), hit_per_cone.end()) /
-          bin_width);
-      Histogram histogram(bin_no);
-      for (int i = 0; i < hit_per_cone.size(); ++i) {
-        if (histogram[floor(hit_per_cone[i] / bin_width)] <
-            ceil(hit_per_cone.size() / bin_no))
-          histogram[floor(hit_per_cone[i] / bin_width)]++;
+      
+      Histogram histogram(HISTOGRAM_SIZE,0);
+      for (auto height : hit_height[ray_per_cone[c]]) {
+        for(int i =0 ; i < HISTOGRAM_SIZE; ++i) {
+          histogram[i] += gaussian(i * height / HISTOGRAM_SIZE, height, GAUSSIAN_VAR);
+        } 
       }
       histograms[c] = histogram;
     }
@@ -331,41 +333,52 @@ class DV {
 
 
 
-  void compareHistograms(Histogram a , Histogram b ) {
-    //might be useless
-    // int x = std::accumulate(a.begin() , a.end() , 0);
-    // int y = std::accumulate(b.begin() , b.end() , 0);
 
-    //Find which of the 2 has the most elements in it 
 
-    //TODO Find more heuristics than just uniformity
-    float dist_a =0;
-    for(int i =0; i < a.size()-1; ++i) {
-      dist_a += sqrt(a[i]*a[i] + a[i+1]*a[i+1]);
+  /*
+  *Using KL divergence of b from a 
+  */
+  el_t compareHistograms(Histogram a) {
+
+    //TODO remove b and and substitute it with a global matrix
+
+    int size_a = std::accumulate(a.begin() , a.end() , 0);
+    int size_b = (HISTOGRAM_SIZE*(HISTOGRAM_SIZE+1))/2;
+
+    el_t sum =0;
+
+    for (int i=0; i< HISTOGRAM_SIZE; ++i) {
+      if(a[i] ==0) {
+        a[i] = 0.0001;
+      }
+      
+      el_t p_a = a[i] / size_a;
+      el_t p_b = optimal_histogram[i] / size_b;
+      
+      sum += p_b *log(p_b/p_a);
     }
 
-    float dist_b =0;
-    for(int i =0; i < b.size()-1; ++i) {
-      dist_b += sqrt(b[i]*b[i] + b[i+1]*b[i+1]);
-    }
-    //Might need to verifh Which is H and which is L 
-    float perfect_uniform_a = 1/(a.back() - a.front()+1) +(a.back() + a.front())*sqrt(1 + pow(a.back() - a.front()+1,2)); 
-
-    float perfect_uniform_b = 1/(b.back() - b.front()+1) +(b.back() + b.front())*sqrt(1 + pow(b.back() - b.front()+1,2)); 
-
-    if(abs(perfect_uniform_a - dist_a) > abs(perfect_uniform_b - dist_b)) {
-      // b is more uniform 
-      //do sth
-    }else {
-      // a is more uniform 
-      //do sth
-    }
-
+    return sum;
   }
 
+  el_t gaussian(el_t x , el_t mean, el_t var) {
+    el_t toReturn = 1 / (sqrt(var*2*M_PI));
+    el_t temp = (x-mean) / sqrt(var);
+    temp *=temp;
+    temp = -temp/2;
+    return toReturn * exp(temp);
+  }
 
+  Histogram createOptimalHistogram() {
+    //Use Gauss series 
+    Histogram h(HISTOGRAM_SIZE);
+    for(int i=0 ; i < HISTOGRAM_SIZE ; ++i) {
+        h[i] = i+1;
+    }
+    return h;
+  }
 
-
+  
 };  // namespace World
 
 }  // namespace World
