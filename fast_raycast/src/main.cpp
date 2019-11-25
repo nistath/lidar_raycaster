@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <eigen3/Eigen/Eigen>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <numeric>
@@ -233,9 +234,31 @@ class DV {
 
   DV(Obstacle::Plane plane, std::initializer_list<Obstacle::Cone> cones)
       : plane_{plane}, cones_{cones} {}
-
+  DV(Obstacle::Plane plane, std::vector<Obstacle::Cone> cones)
+      : plane_{plane}, cones_{cones} {}
   DV() : DV{{{0, 0, 1}, {0, 0, 0}}, {}} {}
 
+  World::DV static readConeFromFile(std::string const fileName) {
+    Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
+    std::string x, y, z;
+    ifstream in_file;
+    std::vector<Obstacle::Cone> cone_list;
+    in_file.open(fileName);
+    if (!in_file) {
+      std::cout << "Unable to open file";
+      exit(1);
+    }
+
+    while (in_file.good()) {
+      std::getline(in_file, x, ',');
+      std::getline(in_file, y, ',');
+      std::getline(in_file, z, ',');
+      cone_list.push_back(Obstacle::Cone(
+          lcaster::Vector3e(std::stof(x), std::stof(y), std::stof(z)),
+          lcaster::Vector3e(0, 0, -1), std::stof(z), (el_t)0.08));
+    }
+    return World::DV(ground, cone_list);
+  }
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
                        Solutions<NRays>& solutions,
@@ -269,6 +292,7 @@ class DV {
   template <int NRays = Dynamic>
   void computeRayPerCone(ObjectIdxs<NRays>& object,
                          std::vector<std::vector<el_t>>& ray_per_cone) {
+  std::cout << ray_per_cone.size() << endl;
     ray_per_cone.resize(cones_.size());
     for (int i = 0; i < object.size(); ++i) {
       if (object[i] >= cones_.size())
@@ -288,6 +312,8 @@ class DV {
       for (int i = 0; i < ray_per_cone[c].size(); ++i) {
         hit_per_cone[i] = hit_height[ray_per_cone[c][i]];
       }
+      
+
       float bin_width = getBinWidth(hit_per_cone, hit_per_cone.size());
       int bin_no = std::round(
           *std::max_element(hit_per_cone.begin(), hit_per_cone.end()) /
@@ -364,14 +390,14 @@ int main() {
 
   rays.directions().rowwise().normalize();
 
-  Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
-  Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
-  Obstacle::Cone cone2({-1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
+  // Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
+  // // Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
+  // Obstacle::Cone cone2({-1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
 
   Solutions<Dynamic> solutions(rays.rays());
   Solutions<Dynamic> hit_height(rays.rays());
-
-  World::DV world(ground, {cone, cone2});
+  // World::DV world(ground, {});
+  World::DV world = World::DV::readConeFromFile("/home/iron/Desktop/test.csv");
   World::ObjectIdxs<Dynamic> object;
   world.computeSolution(rays, solutions, hit_height, object);
   std::vector<std::vector<el_t>> ray_per_cone;
@@ -382,13 +408,13 @@ int main() {
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
 
-  if (false) {
-    cone.computeSolution(rays, solutions);
-    PointCloud::Ptr cloud2(new PointCloud);
-    computePoints(rays, solutions, *cloud2);
+  // if (false) {
+  //   cone.computeSolution(rays, solutions);
+  //   PointCloud::Ptr cloud2(new PointCloud);
+  //   computePoints(rays, solutions, *cloud2);
 
-    *cloud += *cloud2;
-  }
+  //   *cloud += *cloud2;
+  // }
 
   pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
   viewer.showCloud(cloud);
