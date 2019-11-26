@@ -276,7 +276,7 @@ class Lidar {
     }
 
     // Create unit vectors
-    int horiz_lasers = ceil((2*M_PI) / this->angular_resolution_);
+    int horiz_lasers = ceil((2 * M_PI) / this->angular_resolution_);
     int num_rays = this->num_lasers_ * horiz_lasers;
     this->rays_ = Rays(num_rays);
     this->rays_.origins() = this->origin_.transpose().replicate(num_rays, 1);
@@ -294,7 +294,6 @@ class Lidar {
       }
     }
     this->rays_.directions().rowwise().normalize();
-    std::cout << "Finished creating rays" << std::endl;
   }
 };
 
@@ -353,7 +352,7 @@ int main() {
 
   World::Lidar vlp32 =
       World::Lidar(Vector3e(0.0, 0.0, 0.3), 32, 0.2 * M_PI / 180.0);
-  vlp32.setRays("../sensor_info/VLP32_LaserInfo.csv");
+  vlp32.setRays("fast_raycast/sensor_info/VLP32_LaserInfo.csv");
   Rays<Dynamic> rays = vlp32.rays();
 
   // constexpr el_t HFOV = M_PI / 8;
