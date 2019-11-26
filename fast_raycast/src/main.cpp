@@ -2,6 +2,7 @@
 #include <eigen3/Eigen/Eigen>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <optional>
 
 #include <pcl/point_cloud.h>
@@ -17,7 +18,16 @@ namespace lcaster {
 using namespace Eigen;
 
 using el_t = float;
+using StdVector = std::vector<el_t, Eigen::aligned_allocator<el_t>>;
 using Vector3e = Matrix<el_t, 3, 1>;
+using RowVector3e = Matrix<el_t, 1, 3>;
+using MatrixXe = Matrix<el_t, Dynamic, Dynamic>;
+using Pair = std::pair<el_t, el_t>;
+
+// constexpr auto toMap(StdVector& vec) {
+//   return Map<Array<el_t, Dynamic, 1>, AlignmentType::Aligned>(vec.data(),
+//                                                               vec.size(), 1);
+// }
 
 constexpr el_t nan(const char* tagp = "") {
   if constexpr (std::is_same_v<float, el_t>) {
@@ -55,6 +65,8 @@ class Rays : public Matrix<el_t, NRays, 6> {
 #undef __RAYS__GET_BLOCK
 
  public:
+  RowVector3e origin_offset = {0, 0, 0};
+
   Rays() : Base(1, 6) {}
 
   template <typename OtherDerived>
@@ -71,8 +83,13 @@ class Rays : public Matrix<el_t, NRays, 6> {
   /**
    *! Returns a block of the coordinates of each ray's origin.
    */
-  auto constexpr origins() { return get_block(0); }
-  auto const constexpr origins() const { return get_block(0); }
+  auto constexpr originsRaw() { return get_block(0); }
+  auto const constexpr originsRaw() const { return get_block(0); }
+
+  auto constexpr origins() { return originsRaw().rowwise() + origin_offset; }
+  auto const constexpr origins() const {
+    return originsRaw().rowwise() + origin_offset;
+  }
 
   /**
    *! Returns a block of the (unit) vector of each ray's direction.
@@ -227,8 +244,8 @@ class Cone {
 
 namespace World {
 
-template <int NRays = Dynamic, typename idx_t = size_t>
-using ObjectIdxs = Solutions<NRays, idx_t>;
+template <int NRays = Dynamic>
+using ObjectIdxs = Solutions<NRays, Index>;
 
 class Lidar {
  public:
@@ -247,7 +264,7 @@ class Lidar {
         num_lasers_{num_lasers},
         angular_resolution_{angular_resolution} {}
 
-  Rays<Dynamic> rays() { return this->rays_; }
+  Rays<Dynamic>& rays() { return this->rays_; }
 
   Vector3e origin() { return this->origin_; }
 
@@ -279,12 +296,12 @@ class Lidar {
     int horiz_lasers = ceil((2 * M_PI) / this->angular_resolution_);
     int num_rays = this->num_lasers_ * horiz_lasers;
     this->rays_ = Rays(num_rays);
-    this->rays_.origins() = this->origin_.transpose().replicate(num_rays, 1);
+    this->rays_.originsRaw() = this->origin_.transpose().replicate(num_rays, 1);
 
-    for (int laser = 0; laser < elev_angles.size(); laser++) {
+    for (Index laser = 0; laser < elev_angles.size(); laser++) {
       const el_t sin_elev = sin(elev_angles[laser]);
       const el_t cos_elev = cos(elev_angles[laser]);
-      for (int i = 0; i < horiz_lasers; i++) {
+      for (Index i = 0; i < horiz_lasers; i++) {
         el_t phase = i * (this->angular_resolution_);
         this->rays_.directions()(laser * horiz_lasers + i, 0) =
             cos_elev * cos(phase);
@@ -315,6 +332,9 @@ class DV {
     Solutions<NRays> solutions_temp = make_solutions(rays);
     Solutions<NRays> hit_height_temp = make_solutions(rays);
 
+    solutions.resize(rays.rays(), 1);
+    hit_height.resize(rays.rays(), 1);
+
     using ObjectIdxs_T = std::remove_reference_t<decltype(object)>;
     using idx_t = typename ObjectIdxs_T::Scalar;
     object = ObjectIdxs_T::Constant(rays.rays(), 1,
@@ -325,7 +345,7 @@ class DV {
       auto const& cone = cones_[c];
       cone.computeSolution(rays, solutions_temp, true, &hit_height_temp);
 
-      for (int i = 0; i < rays.rays(); ++i) {
+      for (Index i = 0; i < rays.rays(); ++i) {
         if (std::isnan(solutions[i]) || std::isnan(solutions_temp[i]) ||
             solutions_temp[i] > solutions[i]) {
           continue;
@@ -337,7 +357,55 @@ class DV {
       }
     }
   }
+
+  template <int NRays = Dynamic>
+  auto computeIdxsPerCone(ObjectIdxs<NRays> const& object) const {
+    std::vector<std::vector<Index>> idxs_per_cone(cones_.size());
+
+    for (Index i = 0; i < object.size(); ++i) {
+      if (object[i] >= cones_.size())
+        continue;
+
+      idxs_per_cone[object[i]].push_back(i);
+    }
+
+    return idxs_per_cone;
+  }
 };
+
+template <int NRays = Dynamic>
+auto computeGrid(DV const& dv,
+                 Rays<NRays>& rays,
+                 Pair Dx_range,
+                 el_t Dx_step,
+                 Pair Dy_range,
+                 el_t Dy_step) {
+  Index x_count = (Dx_range.second - Dx_range.first) / Dx_step;
+  Index y_count = (Dy_range.second - Dy_range.first) / Dy_step;
+  MatrixXd grid(x_count, y_count);
+
+  Solutions<NRays> solutions;
+  Solutions<NRays> hit_height;
+  ObjectIdxs<NRays> object;
+
+  for (Index x_iter = 0; x_iter < x_count; ++x_iter) {
+    for (Index y_iter = 0; y_iter < y_count; ++y_iter) {
+      rays.origin_offset = {x_iter * Dx_step + Dx_range.first,
+                            y_iter * Dy_step + Dy_range.first, 0};
+
+      dv.computeSolution(rays, solutions, hit_height, object);
+      auto idxs_per_cone = dv.computeIdxsPerCone(object);
+
+      grid(x_iter, y_iter) = std::accumulate(
+          idxs_per_cone.begin(), idxs_per_cone.end(), (Index)0,
+          [](Index prior, std::vector<Index> const& vec) -> Index {
+            return prior + vec.size();
+          });
+    }
+  }
+
+  return grid;
+}
 
 }  // namespace World
 
@@ -378,26 +446,37 @@ int main() {
   // rays.directions().rowwise().normalize();
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
-  Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
+
+  World::DV world(
+      ground, {
+                  {{-12.75835829, 18.81545688, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-8.27767283, 17.59812307, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-4.26349242, 16.15671487, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-0.99153611, 14.40308463, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{1.12454352, 12.2763364, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{2.01314521, 9.33822398, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{1.98908967, 5.84530425, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{1.43369938, 1.8860828, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-13.47161573, 15.90147955, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-9.16834254, 14.73338793, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-5.45778135, 13.40468399, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-2.73894015, 11.96452376, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-1.46294141, 10.75813953, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-0.973512, 9.05559578, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-0.99791948, 6.12418841, 0.29}, {0, 0, -1}, 0.29, 0.08},
+                  {{-1.51764477, 2.42419778, 0.29}, {0, 0, -1}, 0.29, 0.08},
+              });
+
+  // World::computeGrid(world, rays, {0, 1}, 0.5, {0, 1}, 0.5);
 
   Solutions<Dynamic> solutions(rays.rays());
   Solutions<Dynamic> hit_height(rays.rays());
-
-  World::DV world(ground, {cone});
   World::ObjectIdxs<Dynamic> object;
   world.computeSolution(rays, solutions, hit_height, object);
   // ground.computeSolution(rays, solutions);
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
-
-  if (false) {
-    cone.computeSolution(rays, solutions);
-    PointCloud::Ptr cloud2(new PointCloud);
-    computePoints(rays, solutions, *cloud2);
-
-    *cloud += *cloud2;
-  }
 
   pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
   viewer.showCloud(cloud);

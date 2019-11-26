@@ -60,6 +60,8 @@
     "set": "cpp",
     "string": "cpp",
     "string_view": "cpp",
-    "cassert": "cpp"
+    "cassert": "cpp",
+    "csignal": "cpp",
+    "typeindex": "cpp"
   }
 }
