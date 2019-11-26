@@ -30,4 +30,5 @@ if( PCL_FOUND )
 endif()
 
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
-target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)
+find_package(OpenMP)
+target_link_libraries(${PROJECT_NAME} Eigen3::Eigen OpenMP::OpenMP_CXX stdc++fs)

@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <eigen3/Eigen/Eigen>
+#include <experimental/filesystem>
 #include <iostream>
 #include <limits>
 #include <numeric>
@@ -373,35 +374,64 @@ class DV {
   }
 };
 
+struct Range {
+  el_t low;
+  el_t high;
+  el_t step;
+
+  Index count() const { return (high - low) / step; }
+  el_t get(Index iter) { return iter * step + low; }
+};
+
+class Grid {
+ public:
+  std::array<Range, 2> ranges_;
+  MatrixXd grid_;
+
+  Grid(std::array<Range, 2> ranges)
+      : ranges_{ranges}, grid_{ranges[0].count(), ranges[1].count()} {}
+
+  void serialize(std::ostream& stream) {
+    for (auto const& range : ranges_) {
+      stream << range.min << "," << range.max << "," << range.step << "\n";
+    }
+
+    const static IOFormat CSVFormat(StreamPrecision, DontAlignCols, ", ", "\n");
+    stream << grid_.format(CSVFormat);
+  }
+
+  void serialize(std::string const& out) {
+    std::ofstream file(out);
+    serialize(file);
+  }
+};
+
 template <int NRays = Dynamic>
-auto computeGrid(DV const& dv,
-                 Rays<NRays>& rays,
-                 Pair Dx_range,
-                 el_t Dx_step,
-                 Pair Dy_range,
-                 el_t Dy_step) {
-  Index x_count = (Dx_range.second - Dx_range.first) / Dx_step;
-  Index y_count = (Dy_range.second - Dy_range.first) / Dy_step;
-  MatrixXd grid(x_count, y_count);
+auto computeGrid(DV const& dv, Rays<NRays>& rays, std::array<Range, 2> ranges) {
+  Grid grid(ranges);
 
   Solutions<NRays> solutions;
   Solutions<NRays> hit_height;
   ObjectIdxs<NRays> object;
 
-  for (Index x_iter = 0; x_iter < x_count; ++x_iter) {
-    for (Index y_iter = 0; y_iter < y_count; ++y_iter) {
-      rays.origin_offset = {x_iter * Dx_step + Dx_range.first,
-                            y_iter * Dy_step + Dy_range.first, 0};
+  std::atomic<Index> iters_done = 0;
+
+#pragma omp parallel for
+  for (Index x_iter = 0; x_iter < ranges[0].count(); ++x_iter) {
+    for (Index y_iter = 0; y_iter < ranges[0].count(); ++y_iter) {
+      rays.origin_offset = {ranges[0].get(x_iter), ranges[1].get(y_iter), 0};
 
       dv.computeSolution(rays, solutions, hit_height, object);
       auto idxs_per_cone = dv.computeIdxsPerCone(object);
 
-      grid(x_iter, y_iter) = std::accumulate(
+      grid.grid_(x_iter, y_iter) = std::accumulate(
           idxs_per_cone.begin(), idxs_per_cone.end(), (Index)0,
           [](Index prior, std::vector<Index> const& vec) -> Index {
             return prior + vec.size();
           });
     }
+
+    std::cout << 100 * (++iters_done) / ranges[0].count() << "%\n";
   }
 
   return grid;
@@ -469,8 +499,15 @@ int main() {
           {{-1.51764477 * sc, 2.42419778 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
       });
 
-  // World::computeGrid(world, rays, {0, 1}, 0.5, {0, 1}, 0.5);
+  el_t xl, xh, xs;
+  el_t yl, yh, ys;
+  std::cin >> xl >> xh >> xs >> yl >> yh >> ys;
+  std::cout << "Computing grid...\n";
+  auto grid = World::computeGrid(
+      world, rays, {World::Range{xl, xh, xs}, World::Range{yl, yh, ys}});
+  grid.serialize("out.csv");
 
+  std::cout << "Computing sample cloud...\n";
   Solutions<Dynamic> solutions(rays.rays());
   Solutions<Dynamic> hit_height(rays.rays());
   World::ObjectIdxs<Dynamic> object;

@@ -62,6 +62,7 @@
     "string_view": "cpp",
     "cassert": "cpp",
     "csignal": "cpp",
-    "typeindex": "cpp"
+    "typeindex": "cpp",
+    "core": "cpp"
   }
 }
