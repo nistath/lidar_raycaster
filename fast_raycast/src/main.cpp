@@ -319,7 +319,35 @@ class DV {
         cones_{cones},
         optimal_histograms_{createOptimalHistograms()} {}
 
+  DV(Obstacle::Plane plane, std::vector<Obstacle::Cone> const& cones)
+      : plane_{plane},
+        cones_{cones},
+        optimal_histograms_{createOptimalHistograms()} {}
+
   DV() : DV{{{0, 0, 1}, {0, 0, 0}}, {}} {}
+
+  static DV readConeFromFile(std::string const fileName) {
+    Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
+    std::string x, y, z;
+    ifstream in_file;
+    std::vector<Obstacle::Cone> cone_list;
+    in_file.open(fileName);
+    if (!in_file) {
+      std::cout << "Unable to open file";
+      exit(1);
+    }
+    while (in_file.good()) {
+      std::getline(in_file, x, ',');
+      std::getline(in_file, y, ',');
+      std::getline(in_file, z);
+
+      cone_list.push_back(Obstacle::Cone(
+          lcaster::Vector3e(std::stof(x), std::stof(y), std::stof(z)),
+          lcaster::Vector3e(0, 0, -1), std::stof(z), (el_t)0.08));
+    }
+    in_file.close();
+    return DV(ground, {cone_list});
+  }
 
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
@@ -419,15 +447,12 @@ int main() {
 
   rays.directions().rowwise().normalize();
 
-  Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
-  Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
-  Obstacle::Cone cone2({-1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
-
   Solutions<Dynamic> solutions(rays.rays());
   Solutions<Dynamic> hit_height(rays.rays());
 
-  World::DV world(ground, {cone, cone2});
   World::ObjectIdxs<Dynamic> object;
+
+  World::DV world = World::DV::readConeFromFile("src/test.csv");
   world.computeSolution(rays, solutions, hit_height, object);
   std::vector<std::vector<Index>> ray_per_cone;
   world.computeRayPerCone(object, ray_per_cone);
@@ -437,14 +462,6 @@ int main() {
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
-
-  if (false) {
-    cone.computeSolution(rays, solutions);
-    PointCloud::Ptr cloud2(new PointCloud);
-    computePoints(rays, solutions, *cloud2);
-
-    *cloud += *cloud2;
-  }
 
   pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
   viewer.showCloud(cloud);
