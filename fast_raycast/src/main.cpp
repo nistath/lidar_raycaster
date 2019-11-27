@@ -3,8 +3,13 @@
 #include <experimental/filesystem>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <optional>
+#include <chrono>
+#include <thread>
+
+using namespace std::chrono_literals;
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -393,7 +398,7 @@ class Grid {
 
   void serialize(std::ostream& stream) {
     for (auto const& range : ranges_) {
-      stream << range.min << "," << range.max << "," << range.step << "\n";
+      stream << range.low << "," << range.high << "," << range.step << "\n";
     }
 
     const static IOFormat CSVFormat(StreamPrecision, DontAlignCols, ", ", "\n");
@@ -416,15 +421,18 @@ auto computeGrid(DV const& dv, Rays<NRays>& rays, std::array<Range, 2> ranges) {
 
   std::atomic<Index> iters_done = 0;
 
+  auto const origin_offset = rays.origin_offset;
+
 #pragma omp parallel for
-  for (Index x_iter = 0; x_iter < ranges[0].count(); ++x_iter) {
-    for (Index y_iter = 0; y_iter < ranges[0].count(); ++y_iter) {
-      rays.origin_offset = {ranges[0].get(x_iter), ranges[1].get(y_iter), 0};
+  for (Index y_iter = 0; y_iter < ranges[0].count(); ++y_iter) {
+    for (Index z_iter = 0; z_iter < ranges[1].count(); ++z_iter) {
+      rays.origin_offset = origin_offset + RowVector3e{0, ranges[0].get(y_iter),
+                                                       ranges[1].get(z_iter)};
 
       dv.computeSolution(rays, solutions, hit_height, object);
       auto idxs_per_cone = dv.computeIdxsPerCone(object);
 
-      grid.grid_(x_iter, y_iter) = std::accumulate(
+      grid.grid_(y_iter, z_iter) = std::accumulate(
           idxs_per_cone.begin(), idxs_per_cone.end(), (Index)0,
           [](Index prior, std::vector<Index> const& vec) -> Index {
             return prior + vec.size();
@@ -442,8 +450,6 @@ auto computeGrid(DV const& dv, Rays<NRays>& rays, std::array<Range, 2> ranges) {
 }  // namespace Intersection
 }  // namespace lcaster
 
-#include <chrono>
-
 int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
@@ -451,7 +457,7 @@ int main() {
   World::Lidar vlp32 =
       World::Lidar(Vector3e(0.0, 0.0, 0.3), 32, 0.2 * M_PI / 180.0);
   vlp32.setRays("fast_raycast/sensor_info/VLP32_LaserInfo.csv");
-  Rays<Dynamic> rays = vlp32.rays();
+  Rays<Dynamic>& rays = vlp32.rays();
 
   // constexpr el_t HFOV = M_PI / 8;
   // constexpr el_t HBIAS = -HFOV / 2;
@@ -478,26 +484,105 @@ int main() {
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
 
   constexpr el_t sc = 0.75;
-  World::DV world(
-      ground,
-      {
-          {{-12.75835829 * sc, 18.81545688 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-8.27767283 * sc, 17.59812307 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-4.26349242 * sc, 16.15671487 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-0.99153611 * sc, 14.40308463 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{1.12454352 * sc, 12.2763364 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{2.01314521 * sc, 9.33822398 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{1.98908967 * sc, 5.84530425 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{1.43369938 * sc, 1.8860828 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-13.47161573 * sc, 15.90147955 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-9.16834254 * sc, 14.73338793 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-5.45778135 * sc, 13.40468399 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-2.73894015 * sc, 11.96452376 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-1.46294141 * sc, 10.75813953 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-0.973512 * sc, 9.05559578 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-0.99791948 * sc, 6.12418841 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-          {{-1.51764477 * sc, 2.42419778 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
-      });
+
+  bool earr;
+  std::cin >> earr;
+
+  std::unique_ptr<World::DV> world_ptr;
+  if (earr) {
+    world_ptr.reset(new World::DV(
+        ground,
+        {
+            {{-12.75835829 * sc, 18.81545688 * sc, 0.29},
+             {0, 0, -1},
+             0.29,
+             0.08},
+            {{-8.27767283 * sc, 17.59812307 * sc, 0.29},
+             {0, 0, -1},
+             0.29,
+             0.08},
+            {{-4.26349242 * sc, 16.15671487 * sc, 0.29},
+             {0, 0, -1},
+             0.29,
+             0.08},
+            {{-0.99153611 * sc, 14.40308463 * sc, 0.29},
+             {0, 0, -1},
+             0.29,
+             0.08},
+            {{1.12454352 * sc, 12.2763364 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
+            {{2.01314521 * sc, 9.33822398 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
+            {{1.98908967 * sc, 5.84530425 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
+            {{1.43369938 * sc, 1.8860828 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
+            {{-13.47161573 * sc, 15.90147955 * sc, 0.29},
+             {0, 0, -1},
+             0.29,
+             0.08},
+            {{-9.16834254 * sc, 14.73338793 * sc, 0.29},
+             {0, 0, -1},
+             0.29,
+             0.08},
+            {{-5.45778135 * sc, 13.40468399 * sc, 0.29},
+             {0, 0, -1},
+             0.29,
+             0.08},
+            {{-2.73894015 * sc, 11.96452376 * sc, 0.29},
+             {0, 0, -1},
+             0.29,
+             0.08},
+            {{-1.46294141 * sc, 10.75813953 * sc, 0.29},
+             {0, 0, -1},
+             0.29,
+             0.08},
+            {{-0.973512 * sc, 9.05559578 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
+            {{-0.99791948 * sc, 6.12418841 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
+            {{-1.51764477 * sc, 2.42419778 * sc, 0.29}, {0, 0, -1}, 0.29, 0.08},
+        }));
+  } else {
+    world_ptr.reset(new World::DV(
+        ground, {
+                    {{-5.770087622473654 * sc, 13.960476554628654 * sc, 0.29},
+                     {0, 0, -1},
+                     0.29,
+                     0.08},
+                    {{-3.5531794846979197 * sc, 10.09163739418124 * sc, 0.29},
+                     {0, 0, -1},
+                     0.29,
+                     0.08},
+                    {{-1.8689520677436653 * sc, 6.528338851853511 * sc, 0.29},
+                     {0, 0, -1},
+                     0.29,
+                     0.08},
+                    {{-0.9647880812999942 * sc, 3.5874807367224406 * sc, 0.29},
+                     {0, 0, -1},
+                     0.29,
+                     0.08},
+                    {{-0.9155631877776976 * sc, 1.8321709002122402 * sc, 0.29},
+                     {0, 0, -1},
+                     0.29,
+                     0.08},
+                    {{-3.20524532871408 * sc, 15.516620509454873 * sc, 0.29},
+                     {0, 0, -1},
+                     0.29,
+                     0.08},
+                    {{-0.8977072413626149 * sc, 11.487512447642604 * sc, 0.29},
+                     {0, 0, -1},
+                     0.29,
+                     0.08},
+                    {{0.9215174312005985 * sc, 7.629828740804735 * sc, 0.29},
+                     {0, 0, -1},
+                     0.29,
+                     0.08},
+                    {{1.9951360927293942 * sc, 4.076202420297469 * sc, 0.29},
+                     {0, 0, -1},
+                     0.29,
+                     0.08},
+                    {{1.9875922542497209 * sc, 1.0760700607559186 * sc, 0.29},
+                     {0, 0, -1},
+                     0.29,
+                     0.08},
+                }));
+  }
+  World::DV& world = *world_ptr.get();
 
   el_t xl, xh, xs;
   el_t yl, yh, ys;
@@ -505,7 +590,10 @@ int main() {
   std::cout << "Computing grid...\n";
   auto grid = World::computeGrid(
       world, rays, {World::Range{xl, xh, xs}, World::Range{yl, yh, ys}});
-  grid.serialize("out.csv");
+
+  std::string fname;
+  std::cin >> fname;
+  grid.serialize(fname);
 
   std::cout << "Computing sample cloud...\n";
   Solutions<Dynamic> solutions(rays.rays());
@@ -520,6 +608,7 @@ int main() {
   pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
   viewer.showCloud(cloud);
   while (!viewer.wasStopped()) {
+    std::this_thread::sleep_for(100ms);
   }
 
   return 0;
