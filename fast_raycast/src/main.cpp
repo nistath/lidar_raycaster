@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <chrono>
 #include <eigen3/Eigen/Eigen>
 #include <experimental/filesystem>
 #include <iostream>
@@ -6,7 +7,6 @@
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <chrono>
 #include <thread>
 
 using namespace std::chrono_literals;
@@ -454,32 +454,9 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  World::Lidar vlp32 =
-      World::Lidar(Vector3e(0.0, 0.0, 0.3), 32, 0.2 * M_PI / 180.0);
+  World::Lidar vlp32({0, 0, 0}, 32, 0.2 * M_PI / 180.0);
   vlp32.setRays("fast_raycast/sensor_info/VLP32_LaserInfo.csv");
   Rays<Dynamic>& rays = vlp32.rays();
-
-  // constexpr el_t HFOV = M_PI / 8;
-  // constexpr el_t HBIAS = -HFOV / 2;
-  // constexpr el_t VFOV = M_PI / 6;
-  // constexpr el_t VBIAS = -M_PI / 2;
-  //
-  // constexpr int NRings = 200;
-  // constexpr int NPoints = 200;
-  // constexpr int NRays = NPoints * NRings;
-  // Rays<Dynamic> rays = Rays<NRays>::Zero();
-  // rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
-  //
-  // for (int ring = 0; ring < NRings; ++ring) {
-  //   const el_t z = -2 * cos(VFOV * ring / NRings + VBIAS) - 0.5;
-  //   for (int i = 0; i < NPoints; ++i) {
-  //     const el_t phase = HFOV * i / NPoints + HBIAS;
-  //     rays.directions()(ring * NPoints + i, 0) = cos(phase);
-  //     rays.directions()(ring * NPoints + i, 1) = sin(phase);
-  //     rays.directions()(ring * NPoints + i, 2) = z;
-  //   }
-  // }
-  // rays.directions().rowwise().normalize();
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
 
@@ -596,6 +573,11 @@ int main() {
   grid.serialize(fname);
 
   std::cout << "Computing sample cloud...\n";
+
+  el_t height = 0;
+  std::cin >> height;
+  rays.origin_offset = {0, 0, height};
+
   Solutions<Dynamic> solutions(rays.rays());
   Solutions<Dynamic> hit_height(rays.rays());
   World::ObjectIdxs<Dynamic> object;

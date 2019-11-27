@@ -42,8 +42,8 @@ car = Image.open('/home/nistath/Downloads/car.png')
 pix2meter = 752 / 1.530
 
 if True:
-    grid1 = Grid.from_csv('/home/nistath/Git/rt/depp.csv')
-    grid2 = Grid.from_csv('/home/nistath/Git/rt/earr.csv')
+    grid1 = Grid.from_csv('/home/nistath/Git/rt/build/depp.csv')
+    grid2 = Grid.from_csv('/home/nistath/Git/rt/build/earr.csv')
 
     grid1.plot()
     plt.show()
@@ -52,7 +52,7 @@ if True:
 
     grid = Grid(grid1.ranges, (grid1.grid + grid2.grid)/2)
 else:
-    grid = Grid.from_csv('/home/nistath/Git/rt/earr.csv')
+    grid = Grid.from_csv('/home/nistath/Git/rt/build/earr.csv')
 
 png_write(grid.grid, '/home/nistath/Desktop/grid.png', 'topleft', True)
 grid.plot()
