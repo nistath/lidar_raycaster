@@ -276,10 +276,8 @@ class DV {
       ray_per_cone[object[i]].push_back(i);
     }
   }
-  const int HISTOGRAM_SIZE =10;
+  const int HISTOGRAM_SIZE = 10;
   const el_t GAUSSIAN_VAR = 1;
-
- 
 
   typedef std::vector<int> Histogram;
   const Histogram optimal_histogram = createOptimalHistogram();
@@ -289,12 +287,12 @@ class DV {
       Solutions<NRays> const& hit_height) {
     std::vector<Histogram> histograms(ray_per_cone.size());
     for (int c = 0; c < ray_per_cone.size(); ++c) {
-     
-      Histogram histogram(HISTOGRAM_SIZE,0);
+      Histogram histogram(HISTOGRAM_SIZE, 0);
       for (auto height : hit_height[ray_per_cone[c]]) {
-        for(int i =0 ; i < HISTOGRAM_SIZE; ++i) {
-          histogram[i] += gaussian(i * height / HISTOGRAM_SIZE, height, GAUSSIAN_VAR);
-        } 
+        for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
+          histogram[i] +=
+              gaussian(i * height / HISTOGRAM_SIZE, height, GAUSSIAN_VAR);
+        }
       }
       histograms[c] = histogram;
     }
@@ -317,58 +315,68 @@ class DV {
     }
   }
 
-  /**
-   * Using Freedman–Diaconis rule
-   **/
-  float getBinWidth(std::vector<el_t> hit_per_cone, int n) {
-    std::sort(hit_per_cone.begin(), hit_per_cone.end());
-    float q1 = hit_per_cone[0.25 * n];
-    float q3 = hit_per_cone[0.75 * n];
-    return 2 * (q3 - q1) / cbrt(hit_per_cone.size());
-  }
-
-
   /*
-  *Using KL divergence of b from a 
-  */
+   *Using KL divergence of b from a
+   */
   el_t compareHistograms(Histogram a) {
+    int size_a = std::accumulate(a.begin(), a.end(), 0);
+    int size_b = (HISTOGRAM_SIZE * (HISTOGRAM_SIZE + 1)) / 2;
 
-    int size_a = std::accumulate(a.begin() , a.end() , 0);
-    int size_b = (HISTOGRAM_SIZE*(HISTOGRAM_SIZE+1))/2;
+    el_t sum = 0;
 
-    el_t sum =0;
-
-    for (int i=0; i< HISTOGRAM_SIZE; ++i) {
-      if(a[i] ==0) {
+    for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
+      if (a[i] == 0) {
         a[i] = 0.0001;
       }
-      
+
       el_t p_a = a[i] / size_a;
       el_t p_b = optimal_histogram[i] / size_b;
-      sum += p_b *log(p_b/p_a);
+      sum += p_b * log(p_b / p_a);
     }
 
     return sum;
   }
 
-  el_t gaussian(el_t x , el_t mean, el_t var) {
-    el_t toReturn = 1 / (sqrt(var*2*M_PI));
-    el_t temp = (x-mean) / sqrt(var);
-    temp *=temp;
-    temp = -temp/2;
+  el_t gaussian(el_t x, el_t mean, el_t var) {
+    el_t toReturn = 1 / (sqrt(var * 2 * M_PI));
+    el_t temp = (x - mean) / sqrt(var);
+    temp *= temp;
+    temp = -temp / 2;
     return toReturn * exp(temp);
   }
 
   Histogram createOptimalHistogram() {
-    //Use Gauss series 
+    // Use Gauss series
     Histogram h(HISTOGRAM_SIZE);
-    for(int i=0 ; i < HISTOGRAM_SIZE ; ++i) {
-        h[i] = i+1;
+    for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
+      h[i] = i + 1;
     }
     return h;
   }
 
+  Histogram getBestHistogram(std::vector<Histogram> h) {
+    std::vector<float> probs(h.size());
+    for (int i = 0; i < h.size(); ++i) {
+      probs[i] = compareHistograms(h[i]);
+    }
+
+    Histogram toReturn =
+        h[std::min_element(probs.begin(), probs.end()) - probs.begin()];
+
+    // Should be removed eventually
+
+    for (int l = 0; l < toReturn.size(); ++l) {
+      std::cout << "Number of points: " << toReturn[l] << " ";
+      for (int i = 0; i < toReturn[l]; ++i) {
+        std::cout << "*";
+      }
+      std::cout << endl;
+    }
   
+
+   
+  }
+
 };  // namespace World
 
 }  // namespace World
@@ -420,6 +428,8 @@ int main() {
 
   auto p = world.createHistograms(ray_per_cone, hit_height);
   world.printHistograms(p);
+  auto x = world.getBestHistogram(p);
+
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
 
