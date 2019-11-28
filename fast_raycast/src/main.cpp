@@ -255,7 +255,6 @@ using ObjectIdxs = Solutions<NRays, Index>;
 
 class Lidar {
  public:
-  Vector3e origin_;
   // angular resolution in radians
   el_t angular_resolution_;
   // elevation angles in radians
@@ -269,23 +268,28 @@ class Lidar {
     angular_resolution_ = angular_resolution;
   }
 
+  Lidar(Vector3e origin, el_t angular_resolution, std::string calib_info):
+    Lidar(origin, angular_resolution){
+    setElevAngles(calib_info);
+    rays_ = makeRays();
+  }
+
   Rays<Dynamic>& rays() { return rays_; }
 
   Vector3e origin() { return rays_.origin_offset; }
 
-  void set_origin(Vector3e new_origin) { rays_.origin_offset = new_origin; }
+  void setOrigin(Vector3e new_origin) { rays_.origin_offset = new_origin; }
 
-  int num_lasers() { return elev_angles.size(); }
+  int numLasers() { return elev_angles.size(); }
 
-  void setRays(std::string csv) {
+  void setElevAngles(std::string calib_info){
     /*
-      Create Rays object from LiDAR calibration info
+      Read file, parse elevation angles
       Assumes data in CSV format, with 1st column being laser
       number and second column being elevation angle
     */
-    // Read file, parse elevation angles
     // TODO check if legal file name?
-    std::ifstream file(csv);
+    std::ifstream file(calib_info);
     std::string headers;
     getline(file, headers);
     std::string container;
@@ -300,29 +304,34 @@ class Lidar {
       elev_angles.push_back(stof(split_info[1]) * M_PI / 180.0);
       split_info.clear();
     }
+  }
 
+  Rays<Dynamic> makeRays() {
+    /*
+      Create Rays object from LiDAR angular resolution and elevation angles
+    */
     // Create unit vectors
+    Rays<Dynamic> rays;
     int horiz_lasers = ceil((2 * M_PI) / angular_resolution_);
-    int num_rays = num_lasers() * horiz_lasers;
-    // TODO: find better workaround for setting origin_offset
-    RowVector3e origin = rays_.origin_offset;
-    rays_ = Rays(num_rays);
-    rays_.origin_offset = origin;
-    rays_.originsRaw() = MatrixXe::Zero(num_rays, 3);
+    int num_rays = numLasers() * horiz_lasers;
+    rays = Rays(num_rays);
+    rays.origin_offset = rays_.origin_offset;
+    rays.originsRaw() = MatrixXe::Zero(num_rays, 3);
 
     for (Index laser = 0; laser < elev_angles.size(); laser++) {
       const el_t sin_elev = sin(elev_angles[laser]);
       const el_t cos_elev = cos(elev_angles[laser]);
       for (Index i = 0; i < horiz_lasers; i++) {
         el_t phase = i * angular_resolution_;
-        rays_.directions()(laser * horiz_lasers + i, 0) =
+        rays.directions()(laser * horiz_lasers + i, 0) =
             cos_elev * cos(phase);
-        rays_.directions()(laser * horiz_lasers + i, 1) =
+        rays.directions()(laser * horiz_lasers + i, 1) =
             cos_elev * sin(phase);
-        rays_.directions()(laser * horiz_lasers + i, 2) = sin_elev;
+        rays.directions()(laser * horiz_lasers + i, 2) = sin_elev;
       }
     }
-    rays_.directions().rowwise().normalize();
+    rays.directions().rowwise().normalize();
+    return rays;
   }
 };
 
@@ -460,8 +469,7 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  World::Lidar vlp32({0, 0, 0.3}, 0.2 * M_PI / 180.0);
-  vlp32.setRays("../sensor_info/VLP32_LaserInfo.csv");
+  World::Lidar vlp32({0, 0, 0.3}, 0.2 * M_PI / 180.0, "../sensor_info/VLP32_LaserInfo.csv");
   Rays<Dynamic>& rays = vlp32.rays();
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
@@ -579,11 +587,12 @@ int main() {
   grid.serialize(fname);
   */
   std::cout << "Computing sample cloud...\n";
-  /*
+
   el_t height = 0;
   std::cin >> height;
-  rays.origin_offset = {0, 0, height};
-  */
+  vlp32.setOrigin({0, 0, height});
+  // rays.origin_offset = {0, 0, height};
+
   Solutions<Dynamic> solutions(rays.rays());
   Solutions<Dynamic> hit_height(rays.rays());
   World::ObjectIdxs<Dynamic> object;
