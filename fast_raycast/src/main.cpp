@@ -289,11 +289,7 @@ class DV {
       Solutions<NRays> const& hit_height) {
     std::vector<Histogram> histograms(ray_per_cone.size());
     for (int c = 0; c < ray_per_cone.size(); ++c) {
-      std::vector<el_t> hit_per_cone(ray_per_cone[c].size());
-      for (int i = 0; i < ray_per_cone[c].size(); ++i) {
-        hit_per_cone[i] = hit_height[ray_per_cone[c][i]];
-      }
-      
+     
       Histogram histogram(HISTOGRAM_SIZE,0);
       for (auto height : hit_height[ray_per_cone[c]]) {
         for(int i =0 ; i < HISTOGRAM_SIZE; ++i) {
@@ -332,15 +328,10 @@ class DV {
   }
 
 
-
-
-
   /*
   *Using KL divergence of b from a 
   */
   el_t compareHistograms(Histogram a) {
-
-    //TODO remove b and and substitute it with a global matrix
 
     int size_a = std::accumulate(a.begin() , a.end() , 0);
     int size_b = (HISTOGRAM_SIZE*(HISTOGRAM_SIZE+1))/2;
@@ -354,7 +345,6 @@ class DV {
       
       el_t p_a = a[i] / size_a;
       el_t p_b = optimal_histogram[i] / size_b;
-      
       sum += p_b *log(p_b/p_a);
     }
 
