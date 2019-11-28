@@ -288,10 +288,10 @@ class DV {
     std::vector<Histogram> histograms(ray_per_cone.size());
     for (int c = 0; c < ray_per_cone.size(); ++c) {
       Histogram histogram(HISTOGRAM_SIZE, 0);
-      for (auto height : hit_height[ray_per_cone[c]]) {
+      for (int h =0; h< ray_per_cone[c].size(); ++h) {
         for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
           histogram[i] +=
-              gaussian(i * height / HISTOGRAM_SIZE, height, GAUSSIAN_VAR);
+              gaussian(i * hit_height[ray_per_cone[c][h]] / HISTOGRAM_SIZE, hit_height[ray_per_cone[c][h]], GAUSSIAN_VAR);
         }
       }
       histograms[c] = histogram;
