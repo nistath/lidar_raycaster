@@ -288,6 +288,8 @@ class DV {
     std::vector<Histogram> histograms(ray_per_cone.size());
     for (int c = 0; c < ray_per_cone.size(); ++c) {
       Histogram histogram(HISTOGRAM_SIZE, 0);
+
+      //probably needs to be changed 
       for (int h =0; h< ray_per_cone[c].size(); ++h) {
         for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
           histogram[i] +=
