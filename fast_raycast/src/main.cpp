@@ -351,7 +351,7 @@ class DV {
     // Use Gauss series
     Histogram h(HISTOGRAM_SIZE);
     for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
-      h[i] = i + 1;
+      h[i] = 2*0.29*i / HISTOGRAM_SIZE;
     }
 
     
