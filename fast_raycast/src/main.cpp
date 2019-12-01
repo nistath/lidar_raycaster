@@ -319,7 +319,10 @@ class DV {
 
   /*
    *Using KL divergence of b from a
+   *
+   * Wtf should be dvergence of a from b fix it .
    */
+
   el_t compareHistograms(Histogram a) {
     int size_a = std::accumulate(a.begin(), a.end(), 0);
     int size_b = (HISTOGRAM_SIZE * (HISTOGRAM_SIZE + 1)) / 2;
@@ -328,7 +331,7 @@ class DV {
 
     for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
       if (a[i] == 0) {
-        a[i] = 0.0001;
+        a[i] = 0.01;
       }
 
       el_t p_a = a[i] / size_a;
@@ -345,6 +348,7 @@ class DV {
     temp *= temp;
     temp = -temp / 2;
     return toReturn * exp(temp);
+    //return (x - mean ) / sqrt(var);
   }
 
   Histogram createOptimalHistogram() {
@@ -431,7 +435,7 @@ int main() {
 
   auto p = world.createHistograms(ray_per_cone, hit_height);
   world.printHistograms(p);
-  auto x = world.getBestHistogram(p);
+  //auto x = world.getBestHistogram(p);
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
