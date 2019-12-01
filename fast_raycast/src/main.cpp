@@ -289,11 +289,12 @@ class DV {
     for (int c = 0; c < ray_per_cone.size(); ++c) {
       Histogram histogram(HISTOGRAM_SIZE, 0);
 
-      //probably needs to be changed 
-      for (int h =0; h< ray_per_cone[c].size(); ++h) {
+      // probably needs to be changed
+      for (int h = 0; h < ray_per_cone[c].size(); ++h) {
         for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
           histogram[i] +=
-              gaussian(i * cones_[c].height_ / HISTOGRAM_SIZE, hit_height[ray_per_cone[c][h]], GAUSSIAN_VAR);
+              gaussian(i * cones_[c].height_ / HISTOGRAM_SIZE,
+                       hit_height[ray_per_cone[c][h]], GAUSSIAN_VAR);
         }
       }
       histograms[c] = histogram;
@@ -328,8 +329,7 @@ class DV {
     el_t sum = 0;
 
     for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
-
-      el_t a_ = std::max((double) a[i], 0.01);
+      el_t a_ = std::max((double)a[i], 0.01);
 
       el_t p_a = a_ / size_a;
       el_t p_b = optimal_histogram[i] / size_b;
@@ -345,10 +345,8 @@ class DV {
     temp *= temp;
     temp = -temp / 2;
     return toReturn * exp(temp);
-    //return (x - mean ) / sqrt(var);
   }
 
-  //Need to divide by the sum 
   Histogram createOptimalHistogram() {
     // Use Gauss series
     Histogram h(HISTOGRAM_SIZE);
@@ -360,11 +358,11 @@ class DV {
 
     for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
       h[i] /= size_a;
-    }    
+    }
     return h;
   }
 
-  Histogram getBestHistogram(std::vector<Histogram>const& h) {
+  Histogram getBestHistogram(std::vector<Histogram> const& h) {
     std::vector<float> probs(h.size());
     for (int i = 0; i < h.size(); ++i) {
       probs[i] = compareHistograms(h[i]);
@@ -375,7 +373,7 @@ class DV {
 
     // Should be removed eventually
 
-    std::cout <<"\n\n\n\n" << endl;
+    std::cout << "\n\n\n\n" << endl;
 
     for (int l = 0; l < toReturn.size(); ++l) {
       std::cout << "Number of points: " << toReturn[l] << " ";
@@ -384,10 +382,8 @@ class DV {
       }
       std::cout << endl;
     }
-  
 
-   return toReturn;
-   
+    return toReturn;
   }
 
 };  // namespace World
@@ -427,7 +423,7 @@ int main() {
   rays.directions().rowwise().normalize();
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
-  Obstacle::Cone cone({1, 1, 0.29}, {0, 0, -1}, 0.29, 0.08);
+  Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
   Obstacle::Cone cone2({-1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
 
   Solutions<Dynamic> solutions(rays.rays());
