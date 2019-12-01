@@ -279,7 +279,7 @@ class DV {
   const int HISTOGRAM_SIZE = 10;
   const el_t GAUSSIAN_VAR = 1;
 
-  typedef std::vector<int> Histogram;
+  typedef std::vector<el_t> Histogram;
   const Histogram optimal_histogram = createOptimalHistogram();
   template <int NRays = Dynamic>
   std::vector<Histogram> createHistograms(
@@ -293,7 +293,7 @@ class DV {
       for (int h =0; h< ray_per_cone[c].size(); ++h) {
         for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
           histogram[i] +=
-              gaussian(i * hit_height[ray_per_cone[c][h]] / HISTOGRAM_SIZE, hit_height[ray_per_cone[c][h]], GAUSSIAN_VAR);
+              gaussian(i * cones_[c].height_ / HISTOGRAM_SIZE, hit_height[ray_per_cone[c][h]], GAUSSIAN_VAR);
         }
       }
       histograms[c] = histogram;
@@ -319,24 +319,21 @@ class DV {
 
   /*
    *Using KL divergence of b from a
-   *
-   * Wtf should be dvergence of a from b fix it .
    */
 
-  el_t compareHistograms(Histogram a) {
+  el_t compareHistograms(Histogram const& a) {
     int size_a = std::accumulate(a.begin(), a.end(), 0);
     int size_b = (HISTOGRAM_SIZE * (HISTOGRAM_SIZE + 1)) / 2;
 
     el_t sum = 0;
 
     for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
-      if (a[i] == 0) {
-        a[i] = 0.01;
-      }
 
-      el_t p_a = a[i] / size_a;
+      el_t a_ = std::max((double) a[i], 0.01);
+
+      el_t p_a = a_ / size_a;
       el_t p_b = optimal_histogram[i] / size_b;
-      sum += p_b * log(p_b / p_a);
+      sum += p_a * log(p_a / p_b);
     }
 
     return sum;
@@ -351,16 +348,23 @@ class DV {
     //return (x - mean ) / sqrt(var);
   }
 
+  //Need to divide by the sum 
   Histogram createOptimalHistogram() {
     // Use Gauss series
     Histogram h(HISTOGRAM_SIZE);
     for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
       h[i] = i + 1;
     }
+
+    int size_a = std::accumulate(h.begin(), h.end(), 0);
+
+    for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
+      h[i] /= size_a;
+    }    
     return h;
   }
 
-  Histogram getBestHistogram(std::vector<Histogram> h) {
+  Histogram getBestHistogram(std::vector<Histogram>const& h) {
     std::vector<float> probs(h.size());
     for (int i = 0; i < h.size(); ++i) {
       probs[i] = compareHistograms(h[i]);
@@ -370,6 +374,8 @@ class DV {
         h[std::min_element(probs.begin(), probs.end()) - probs.begin()];
 
     // Should be removed eventually
+
+    std::cout <<"\n\n\n\n" << endl;
 
     for (int l = 0; l < toReturn.size(); ++l) {
       std::cout << "Number of points: " << toReturn[l] << " ";
@@ -421,7 +427,7 @@ int main() {
   rays.directions().rowwise().normalize();
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
-  Obstacle::Cone cone({1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
+  Obstacle::Cone cone({1, 1, 0.29}, {0, 0, -1}, 0.29, 0.08);
   Obstacle::Cone cone2({-1, 0, 0.29}, {0, 0, -1}, 0.29, 0.08);
 
   Solutions<Dynamic> solutions(rays.rays());
@@ -435,7 +441,7 @@ int main() {
 
   auto p = world.createHistograms(ray_per_cone, hit_height);
   world.printHistograms(p);
-  //auto x = world.getBestHistogram(p);
+  auto x = world.getBestHistogram(p);
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
