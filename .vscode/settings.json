@@ -64,5 +64,9 @@
       "csignal": "cpp",
       "typeindex": "cpp",
       "core": "cpp"
-    }
+    },
+    "python.autoComplete.extraPaths": [
+      "/home/orestis/dut18d_ws/DUT18D_ws/devel/lib/python2.7/dist-packages",
+      "/opt/ros/melodic/lib/python2.7/dist-packages"
+    ]
   }

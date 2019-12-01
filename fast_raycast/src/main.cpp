@@ -297,7 +297,7 @@ class DV {
                        hit_height[ray_per_cone[c][h]], GAUSSIAN_VAR);
         }
       }
-      histograms[c] = histogram;
+      histograms[c] = normalize(histogram);
     }
     return histograms;
   }
@@ -354,12 +354,8 @@ class DV {
       h[i] = i + 1;
     }
 
-    int size_a = std::accumulate(h.begin(), h.end(), 0);
-
-    for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
-      h[i] /= size_a;
-    }
-    return h;
+    
+    return normalize(h);
   }
 
   Histogram getBestHistogram(std::vector<Histogram> const& h) {
@@ -384,6 +380,16 @@ class DV {
     }
 
     return toReturn;
+  }
+
+  Histogram normalize(Histogram& h) {
+    int size = std::accumulate(h.begin(), h.end(), 0);
+
+    for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
+      h[i] /= size;
+    }
+    return h;
+    
   }
 
 };  // namespace World
