@@ -314,22 +314,31 @@ class DV {
   }
 
   template <int NRays = Dynamic>
-  std::vector<Histogram> createHistograms(
-      std::vector<std::vector<Index>> const& ray_per_cone,
-      Solutions<NRays> const& hit_height) {
-    std::vector<Histogram> histograms(ray_per_cone.size());
-    for (int c = 0; c < ray_per_cone.size(); ++c) {
-      histograms[c] = Histogram(kHistogramBins, 0);
+  auto createHistogram(Obstacle::Cone const& cone,
+                       std::vector<Index> const& rays_on_cone,
+                       Solutions<NRays> const& hit_height) {
+    Histogram histogram(kHistogramBins, 0);
 
-      // probably needs to be changed
-      for (int h = 0; h < ray_per_cone[c].size(); ++h) {
-        for (int i = 0; i < kHistogramBins; ++i) {
-          histograms[c][i] += gaussian(i * cones_[c].height_ / kHistogramBins,
-                                   hit_height[ray_per_cone[c][h]]);
-        }
+    for (auto ray_idx : rays_on_cone) {
+      for (int i = 0; i < kHistogramBins; ++i) {
+        histogram[i] +=
+            gaussian(i * cone.height_ / kHistogramBins, hit_height[ray_idx]);
       }
-      normalize(histograms[c]);
     }
+    normalize(histogram);
+
+    return histogram;
+  }
+
+  template <int NRays = Dynamic>
+  auto createHistograms(std::vector<std::vector<Index>> const& ray_per_cone,
+                        Solutions<NRays> const& hit_height) {
+    std::vector<Histogram> histograms(cones_.size());
+
+    for (Index c = 0; c < cones_.size(); ++c) {
+      histograms[c] = createHistogram(cones_[c], ray_per_cone[c], hit_height);
+    }
+
     return histograms;
   }
 
