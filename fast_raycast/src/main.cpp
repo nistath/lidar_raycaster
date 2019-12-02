@@ -40,6 +40,14 @@ constexpr el_t nan(const char* tagp = "") {
                 "Invalid el_t!");
 }
 
+el_t gaussian(el_t x, el_t mean, el_t var = 1) {
+  el_t toReturn = 1 / (sqrt(var * 2 * M_PI));
+  el_t temp = (x - mean) / sqrt(var);
+  temp *= temp;
+  temp = -temp / 2;
+  return toReturn * exp(temp);
+}
+
 template <int NRays = Dynamic>
 class Rays : public Matrix<el_t, NRays, 6> {
  private:
@@ -105,6 +113,34 @@ constexpr Solutions<NRays, T> make_solutions(Rays<NRays> const& rays) {
  */
 template <int NRays = Dynamic>
 using Points = Array<el_t, NRays, 3>;
+
+constexpr int kHistogramBins = 20;
+// template <int NBins = kHistogramBins>
+using Histogram = std::vector<el_t>;
+
+void printHistograms(std::vector<Histogram> const& histograms) {
+  for (int c = 0; c < histograms.size(); ++c) {
+    std::cout << "Threshold : "
+              << *std::max_element(histograms[c].begin(), histograms[c].end())
+              << endl;
+
+    for (int l = 0; l < histograms[c].size(); ++l) {
+      std::cout << "Number of points: " << histograms[c][l] << " ";
+      for (int i = 0; i < histograms[c][l]; ++i) {
+        std::cout << "*";
+      }
+      std::cout << endl;
+    }
+  }
+}
+
+void normalize(Histogram& h) {
+  int size = std::accumulate(h.begin(), h.end(), 0);
+
+  for (int i = 0; i < kHistogramBins; ++i) {
+    h[i] /= size;
+  }
+}
 
 using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
 
@@ -276,59 +312,36 @@ class DV {
       ray_per_cone[object[i]].push_back(i);
     }
   }
-  const int HISTOGRAM_SIZE = 10;
-  const el_t GAUSSIAN_VAR = 1;
 
-  typedef std::vector<el_t> Histogram;
-  const Histogram optimal_histogram = createOptimalHistogram();
   template <int NRays = Dynamic>
   std::vector<Histogram> createHistograms(
       std::vector<std::vector<el_t>> const& ray_per_cone,
       Solutions<NRays> const& hit_height) {
     std::vector<Histogram> histograms(ray_per_cone.size());
     for (int c = 0; c < ray_per_cone.size(); ++c) {
-      Histogram histogram(HISTOGRAM_SIZE, 0);
+      Histogram histogram(kHistogramBins, 0);
 
       // probably needs to be changed
       for (int h = 0; h < ray_per_cone[c].size(); ++h) {
-        for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
-          histogram[i] +=
-              gaussian(i * cones_[c].height_ / HISTOGRAM_SIZE,
-                       hit_height[ray_per_cone[c][h]], GAUSSIAN_VAR);
+        for (int i = 0; i < kHistogramBins; ++i) {
+          histogram[i] += gaussian(i * cones_[c].height_ / kHistogramBins,
+                                   hit_height[ray_per_cone[c][h]]);
         }
       }
-      histograms[c] = normalize(histogram);
+      normalize(histogram);
+      histograms[c] = histogram;
     }
     return histograms;
   }
 
-  void printHistograms(std::vector<Histogram> const& histograms) {
-    for (int c = 0; c < histograms.size(); ++c) {
-      std::cout << "Threshold : "
-                << *std::max_element(histograms[c].begin(), histograms[c].end())
-                << endl;
-
-      for (int l = 0; l < histograms[c].size(); ++l) {
-        std::cout << "Number of points: " << histograms[c][l] << " ";
-        for (int i = 0; i < histograms[c][l]; ++i) {
-          std::cout << "*";
-        }
-        std::cout << endl;
-      }
-    }
-  }
-
-  /*
-   *Using KL divergence of b from a
-   */
-
+  const Histogram optimal_histogram = createOptimalHistogram();
   el_t compareHistograms(Histogram const& a) {
     int size_a = std::accumulate(a.begin(), a.end(), 0);
-    int size_b = (HISTOGRAM_SIZE * (HISTOGRAM_SIZE + 1)) / 2;
+    int size_b = (kHistogramBins * (kHistogramBins + 1)) / 2;
 
     el_t sum = 0;
 
-    for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
+    for (int i = 0; i < kHistogramBins; ++i) {
       el_t a_ = std::max((double)a[i], 0.01);
 
       el_t p_a = a_ / size_a;
@@ -339,23 +352,15 @@ class DV {
     return sum;
   }
 
-  el_t gaussian(el_t x, el_t mean, el_t var) {
-    el_t toReturn = 1 / (sqrt(var * 2 * M_PI));
-    el_t temp = (x - mean) / sqrt(var);
-    temp *= temp;
-    temp = -temp / 2;
-    return toReturn * exp(temp);
-  }
-
   Histogram createOptimalHistogram() {
     // Use Gauss series
-    Histogram h(HISTOGRAM_SIZE);
-    for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
-      h[i] = 2*0.29*i / HISTOGRAM_SIZE;
+    Histogram h(kHistogramBins);
+    for (int i = 0; i < kHistogramBins; ++i) {
+      h[i] = 2 * 0.29 * i / kHistogramBins;
     }
 
-    
-    return normalize(h);
+    normalize(h);
+    return h;
   }
 
   Histogram getBestHistogram(std::vector<Histogram> const& h) {
@@ -380,16 +385,6 @@ class DV {
     }
 
     return toReturn;
-  }
-
-  Histogram normalize(Histogram& h) {
-    int size = std::accumulate(h.begin(), h.end(), 0);
-
-    for (int i = 0; i < HISTOGRAM_SIZE; ++i) {
-      h[i] /= size;
-    }
-    return h;
-    
   }
 
 };  // namespace World
@@ -442,7 +437,7 @@ int main() {
   world.computeRayPerCone(object, ray_per_cone);
 
   auto p = world.createHistograms(ray_per_cone, hit_height);
-  world.printHistograms(p);
+  printHistograms(p);
   auto x = world.getBestHistogram(p);
 
   PointCloud::Ptr cloud(new PointCloud);
