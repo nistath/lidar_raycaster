@@ -304,7 +304,7 @@ class DV {
   }
   template <int NRays = Dynamic>
   void computeRayPerCone(ObjectIdxs<NRays>& object,
-                         std::vector<std::vector<el_t>>& ray_per_cone) {
+                         std::vector<std::vector<Index>>& ray_per_cone) {
     ray_per_cone.resize(cones_.size());
     for (int i = 0; i < object.size(); ++i) {
       if (object[i] >= cones_.size())
@@ -315,7 +315,7 @@ class DV {
 
   template <int NRays = Dynamic>
   std::vector<Histogram> createHistograms(
-      std::vector<std::vector<el_t>> const& ray_per_cone,
+      std::vector<std::vector<Index>> const& ray_per_cone,
       Solutions<NRays> const& hit_height) {
     std::vector<Histogram> histograms(ray_per_cone.size());
     for (int c = 0; c < ray_per_cone.size(); ++c) {
@@ -432,7 +432,7 @@ int main() {
   World::DV world(ground, {cone, cone2});
   World::ObjectIdxs<Dynamic> object;
   world.computeSolution(rays, solutions, hit_height, object);
-  std::vector<std::vector<el_t>> ray_per_cone;
+  std::vector<std::vector<Index>> ray_per_cone;
   world.computeRayPerCone(object, ray_per_cone);
 
   auto p = world.createHistograms(ray_per_cone, hit_height);
