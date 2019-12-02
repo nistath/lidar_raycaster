@@ -319,17 +319,16 @@ class DV {
       Solutions<NRays> const& hit_height) {
     std::vector<Histogram> histograms(ray_per_cone.size());
     for (int c = 0; c < ray_per_cone.size(); ++c) {
-      Histogram histogram(kHistogramBins, 0);
+      histograms[c] = Histogram(kHistogramBins, 0);
 
       // probably needs to be changed
       for (int h = 0; h < ray_per_cone[c].size(); ++h) {
         for (int i = 0; i < kHistogramBins; ++i) {
-          histogram[i] += gaussian(i * cones_[c].height_ / kHistogramBins,
+          histograms[c][i] += gaussian(i * cones_[c].height_ / kHistogramBins,
                                    hit_height[ray_per_cone[c][h]]);
         }
       }
-      normalize(histogram);
-      histograms[c] = histogram;
+      normalize(histograms[c]);
     }
     return histograms;
   }
