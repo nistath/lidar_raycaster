@@ -63,7 +63,12 @@
       "cassert": "cpp",
       "csignal": "cpp",
       "typeindex": "cpp",
-      "core": "cpp"
+      "core": "cpp",
+      "unordered_set": "cpp",
+      "hash_map": "cpp",
+      "hash_set": "cpp",
+      "codecvt": "cpp",
+      "filesystem": "cpp"
     },
     "python.autoComplete.extraPaths": [
       "/home/orestis/dut18d_ws/DUT18D_ws/devel/lib/python2.7/dist-packages",

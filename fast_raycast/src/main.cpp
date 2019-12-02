@@ -259,6 +259,42 @@ class Cone {
 
 namespace World {
 
+template <int NRays = Dynamic>
+auto createHistogram(Obstacle::Cone const& cone,
+                     std::vector<Index> const& rays_on_cone,
+                     Solutions<NRays> const& hit_height) {
+  Histogram histogram(kHistogramBins, 0);
+
+  for (auto ray_idx : rays_on_cone) {
+    for (int i = 0; i < kHistogramBins; ++i) {
+      histogram[i] +=
+          gaussian(i * cone.height_ / kHistogramBins, hit_height[ray_idx]);
+    }
+  }
+
+  return histogram;
+}
+
+/*
+ * Computes the KL Divergence of Q from P.
+ * https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Definition
+ */
+el_t klDivergence(Histogram const& p, Histogram const& q) {
+  int sum_p = std::accumulate(p.begin(), p.end(), 0);
+  int sum_q = std::accumulate(q.begin(), q.end(), 0);
+
+  el_t sum = 0;
+
+  for (Index i = 0; i < kHistogramBins; ++i) {
+    el_t const P = p[i] / sum_p;
+    el_t const Q = q[i] / sum_q;
+
+    sum += P * std::log(P / std::max((el_t)0.01, Q));
+  }
+
+  return sum;
+}
+
 template <int NRays = Dynamic, typename idx_t = size_t>
 using ObjectIdxs = Solutions<NRays, idx_t>;
 
@@ -314,23 +350,6 @@ class DV {
   }
 
   template <int NRays = Dynamic>
-  auto createHistogram(Obstacle::Cone const& cone,
-                       std::vector<Index> const& rays_on_cone,
-                       Solutions<NRays> const& hit_height) {
-    Histogram histogram(kHistogramBins, 0);
-
-    for (auto ray_idx : rays_on_cone) {
-      for (int i = 0; i < kHistogramBins; ++i) {
-        histogram[i] +=
-            gaussian(i * cone.height_ / kHistogramBins, hit_height[ray_idx]);
-      }
-    }
-    normalize(histogram);
-
-    return histogram;
-  }
-
-  template <int NRays = Dynamic>
   auto createHistograms(std::vector<std::vector<Index>> const& ray_per_cone,
                         Solutions<NRays> const& hit_height) {
     std::vector<Histogram> histograms(cones_.size());
@@ -343,22 +362,6 @@ class DV {
   }
 
   const Histogram optimal_histogram = createOptimalHistogram();
-  el_t compareHistograms(Histogram const& a) {
-    int size_a = std::accumulate(a.begin(), a.end(), 0);
-    int size_b = (kHistogramBins * (kHistogramBins + 1)) / 2;
-
-    el_t sum = 0;
-
-    for (int i = 0; i < kHistogramBins; ++i) {
-      el_t a_ = std::max((double)a[i], 0.01);
-
-      el_t p_a = a_ / size_a;
-      el_t p_b = optimal_histogram[i] / size_b;
-      sum += p_a * log(p_a / p_b);
-    }
-
-    return sum;
-  }
 
   Histogram createOptimalHistogram() {
     // Use Gauss series
@@ -371,10 +374,11 @@ class DV {
     return h;
   }
 
+
   Histogram getBestHistogram(std::vector<Histogram> const& h) {
     std::vector<float> probs(h.size());
     for (int i = 0; i < h.size(); ++i) {
-      probs[i] = compareHistograms(h[i]);
+      probs[i] = klDivergence(optimal_histogram, h[i]);
     }
 
     Histogram toReturn =
