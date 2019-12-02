@@ -126,9 +126,9 @@ void printHistograms(std::vector<Histogram> const& histograms) {
 
     for (int l = 0; l < histograms[c].size(); ++l) {
       std::cout << "Number of points: " << histograms[c][l] << " ";
-      for (int i = 0; i < histograms[c][l]; ++i) {
-        std::cout << "*";
-      }
+      // for (int i = 0; i < histograms[c][l]; ++i) {
+      //   std::cout << "*";
+      // }
       std::cout << endl;
     }
   }
@@ -253,8 +253,16 @@ class Cone {
 
   Histogram createOptimalHistogram() const {
     Histogram h(kHistogramBins);
+    
+    float low = height_ * 12.5/30; 
+    float high = height_*21.5/30;
     for (int i = 0; i < kHistogramBins; ++i) {
       h[i] = 2 * base_radius_ * i / kHistogramBins;
+
+      el_t offset = (2*pow(low ,2) + pow(height_,2) -high - pow(high,2)) / (high -low);
+      h[i]+=offset;
+
+      cout << offset << endl;
     }
 
     normalize(h);
@@ -452,7 +460,7 @@ int main() {
 
   World::ObjectIdxs<Dynamic> object;
 
-  World::DV world = World::DV::readConeFromFile("src/test.csv");
+  World::DV world = World::DV::readConeFromFile("fast_raycast/src/test.csv");
   world.computeSolution(rays, solutions, hit_height, object);
   std::vector<std::vector<Index>> ray_per_cone;
   world.computeRayPerCone(object, ray_per_cone);
