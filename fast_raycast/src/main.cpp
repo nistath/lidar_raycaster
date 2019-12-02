@@ -251,6 +251,16 @@ class Cone {
     }
   }
 
+  Histogram createOptimalHistogram() const {
+    Histogram h(kHistogramBins);
+    for (int i = 0; i < kHistogramBins; ++i) {
+      h[i] = 2 * base_radius_ * i / kHistogramBins;
+    }
+
+    normalize(h);
+    return h;
+  }
+
  private:
   Matrix<el_t, 3, 3> const M_;
 };
@@ -301,10 +311,13 @@ using ObjectIdxs = Solutions<NRays, idx_t>;
 class DV {
  public:
   Obstacle::Plane plane_;
-  std::vector<Obstacle::Cone> cones_;
+  std::vector<Obstacle::Cone> const cones_;
+  std::vector<Histogram> const optimal_histograms_;
 
   DV(Obstacle::Plane plane, std::initializer_list<Obstacle::Cone> cones)
-      : plane_{plane}, cones_{cones} {}
+      : plane_{plane},
+        cones_{cones},
+        optimal_histograms_{createOptimalHistograms()} {}
 
   DV() : DV{{{0, 0, 1}, {0, 0, 0}}, {}} {}
 
@@ -338,6 +351,7 @@ class DV {
       }
     }
   }
+
   template <int NRays = Dynamic>
   void computeRayPerCone(ObjectIdxs<NRays>& object,
                          std::vector<std::vector<Index>>& ray_per_cone) {
@@ -361,44 +375,14 @@ class DV {
     return histograms;
   }
 
-  const Histogram optimal_histogram = createOptimalHistogram();
-
-  Histogram createOptimalHistogram() {
-    // Use Gauss series
-    Histogram h(kHistogramBins);
-    for (int i = 0; i < kHistogramBins; ++i) {
-      h[i] = 2 * 0.29 * i / kHistogramBins;
+ private:
+  std::vector<Histogram> createOptimalHistograms() {
+    std::vector<Histogram> opt_hist(cones_.size());
+    for (Index c = 0; c < cones_.size(); ++c) {
+      opt_hist[c] = cones_[c].createOptimalHistogram();
     }
-
-    normalize(h);
-    return h;
+    return opt_hist;
   }
-
-
-  Histogram getBestHistogram(std::vector<Histogram> const& h) {
-    std::vector<float> probs(h.size());
-    for (int i = 0; i < h.size(); ++i) {
-      probs[i] = klDivergence(optimal_histogram, h[i]);
-    }
-
-    Histogram toReturn =
-        h[std::min_element(probs.begin(), probs.end()) - probs.begin()];
-
-    // Should be removed eventually
-
-    std::cout << "\n\n\n\n" << endl;
-
-    for (int l = 0; l < toReturn.size(); ++l) {
-      std::cout << "Number of points: " << toReturn[l] << " ";
-      for (int i = 0; i < toReturn[l]; ++i) {
-        std::cout << "*";
-      }
-      std::cout << endl;
-    }
-
-    return toReturn;
-  }
-
 };  // namespace World
 
 }  // namespace World
@@ -450,7 +434,6 @@ int main() {
 
   auto p = world.createHistograms(ray_per_cone, hit_height);
   printHistograms(p);
-  auto x = world.getBestHistogram(p);
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
