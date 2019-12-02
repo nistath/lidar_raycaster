@@ -1,7 +1,10 @@
 #include <assert.h>
+#include <algorithm>
+#include <cmath>
 #include <eigen3/Eigen/Eigen>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <optional>
 
 #include <pcl/point_cloud.h>
@@ -35,6 +38,14 @@ constexpr el_t nan(const char* tagp = "") {
   static_assert(std::is_same_v<float, el_t> || std::is_same_v<double, el_t> ||
                     std::is_same_v<long double, el_t>,
                 "Invalid el_t!");
+}
+
+el_t gaussian(el_t x, el_t mean, el_t var = 1) {
+  el_t toReturn = 1 / (sqrt(var * 2 * M_PI));
+  el_t temp = (x - mean) / sqrt(var);
+  temp *= temp;
+  temp = -temp / 2;
+  return toReturn * exp(temp);
 }
 
 template <int NRays = Dynamic>
@@ -85,7 +96,7 @@ namespace Intersection {
 
 /**
  * Solutions
- *! Provides the scalar `t` for each ray such that direction * t + origin
+ *! Provides the scalar t for each ray such that direction * t + origin
  *! is the intersection point.
  */
 template <int NRays = Dynamic, typename T = el_t>
@@ -102,6 +113,34 @@ constexpr Solutions<NRays, T> make_solutions(Rays<NRays> const& rays) {
  */
 template <int NRays = Dynamic>
 using Points = Array<el_t, NRays, 3>;
+
+constexpr int kHistogramBins = 20;
+// template <int NBins = kHistogramBins>
+using Histogram = std::vector<el_t>;
+
+void printHistograms(std::vector<Histogram> const& histograms) {
+  for (int c = 0; c < histograms.size(); ++c) {
+    std::cout << "Threshold : "
+              << *std::max_element(histograms[c].begin(), histograms[c].end())
+              << endl;
+
+    for (int l = 0; l < histograms[c].size(); ++l) {
+      std::cout << "Number of points: " << histograms[c][l] << " ";
+      for (int i = 0; i < histograms[c][l]; ++i) {
+        std::cout << "*";
+      }
+      std::cout << endl;
+    }
+  }
+}
+
+void normalize(Histogram& h) {
+  int size = std::accumulate(h.begin(), h.end(), 0);
+
+  for (int i = 0; i < kHistogramBins; ++i) {
+    h[i] /= size;
+  }
+}
 
 using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
 
@@ -212,6 +251,16 @@ class Cone {
     }
   }
 
+  Histogram createOptimalHistogram() const {
+    Histogram h(kHistogramBins);
+    for (int i = 0; i < kHistogramBins; ++i) {
+      h[i] = 2 * base_radius_ * i / kHistogramBins;
+    }
+
+    normalize(h);
+    return h;
+  }
+
  private:
   Matrix<el_t, 3, 3> const M_;
 };
@@ -220,16 +269,55 @@ class Cone {
 
 namespace World {
 
+template <int NRays = Dynamic>
+auto createHistogram(Obstacle::Cone const& cone,
+                     std::vector<Index> const& rays_on_cone,
+                     Solutions<NRays> const& hit_height) {
+  Histogram histogram(kHistogramBins, 0);
+
+  for (auto ray_idx : rays_on_cone) {
+    for (int i = 0; i < kHistogramBins; ++i) {
+      histogram[i] +=
+          gaussian(i * cone.height_ / kHistogramBins, hit_height[ray_idx]);
+    }
+  }
+
+  return histogram;
+}
+
+/*
+ * Computes the KL Divergence of Q from P.
+ * https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Definition
+ */
+el_t klDivergence(Histogram const& p, Histogram const& q) {
+  int sum_p = std::accumulate(p.begin(), p.end(), 0);
+  int sum_q = std::accumulate(q.begin(), q.end(), 0);
+
+  el_t sum = 0;
+
+  for (Index i = 0; i < kHistogramBins; ++i) {
+    el_t const P = p[i] / sum_p;
+    el_t const Q = q[i] / sum_q;
+
+    sum += P * std::log(P / std::max((el_t)0.01, Q));
+  }
+
+  return sum;
+}
+
 template <int NRays = Dynamic, typename idx_t = size_t>
 using ObjectIdxs = Solutions<NRays, idx_t>;
 
 class DV {
  public:
   Obstacle::Plane plane_;
-  std::vector<Obstacle::Cone> cones_;
+  std::vector<Obstacle::Cone> const cones_;
+  std::vector<Histogram> const optimal_histograms_;
 
   DV(Obstacle::Plane plane, std::initializer_list<Obstacle::Cone> cones)
-      : plane_{plane}, cones_{cones} {}
+      : plane_{plane},
+        cones_{cones},
+        optimal_histograms_{createOptimalHistograms()} {}
 
   DV() : DV{{{0, 0, 1}, {0, 0, 0}}, {}} {}
 
@@ -263,7 +351,39 @@ class DV {
       }
     }
   }
-};
+
+  template <int NRays = Dynamic>
+  void computeRayPerCone(ObjectIdxs<NRays>& object,
+                         std::vector<std::vector<Index>>& ray_per_cone) {
+    ray_per_cone.resize(cones_.size());
+    for (int i = 0; i < object.size(); ++i) {
+      if (object[i] >= cones_.size())
+        continue;
+      ray_per_cone[object[i]].push_back(i);
+    }
+  }
+
+  template <int NRays = Dynamic>
+  auto createHistograms(std::vector<std::vector<Index>> const& ray_per_cone,
+                        Solutions<NRays> const& hit_height) {
+    std::vector<Histogram> histograms(cones_.size());
+
+    for (Index c = 0; c < cones_.size(); ++c) {
+      histograms[c] = createHistogram(cones_[c], ray_per_cone[c], hit_height);
+    }
+
+    return histograms;
+  }
+
+ private:
+  std::vector<Histogram> createOptimalHistograms() {
+    std::vector<Histogram> opt_hist(cones_.size());
+    for (Index c = 0; c < cones_.size(); ++c) {
+      opt_hist[c] = cones_[c].createOptimalHistogram();
+    }
+    return opt_hist;
+  }
+};  // namespace World
 
 }  // namespace World
 
@@ -309,7 +429,11 @@ int main() {
   World::DV world(ground, {cone, cone2});
   World::ObjectIdxs<Dynamic> object;
   world.computeSolution(rays, solutions, hit_height, object);
-  // ground.computeSolution(rays, solutions);
+  std::vector<std::vector<Index>> ray_per_cone;
+  world.computeRayPerCone(object, ray_per_cone);
+
+  auto p = world.createHistograms(ray_per_cone, hit_height);
+  printHistograms(p);
 
   PointCloud::Ptr cloud(new PointCloud);
   computePoints(rays, solutions, *cloud);
