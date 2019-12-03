@@ -256,7 +256,9 @@ class Cone {
     
     float low = height_ * 12.5/30; 
     float high = height_*21.5/30;
-    el_t offset = (base_radius_*(-2*pow(high,2) + height_ + 2*pow(low,2))) / (height_ *( high - low));
+    float m =1;
+    el_t offset = (base_radius_ *(pow(high,2)*(-(m+1))+pow(height_,2)*m + pow(low,2)*(m+1)))/(height_*(high-low));
+    cout<< " Offset: " <<offset <<endl;
     for (int i = 0; i < kHistogramBins; ++i) {
       el_t x = i * height_ / kHistogramBins;
 		  h[i] = 2 * base_radius_ * x / height_;
