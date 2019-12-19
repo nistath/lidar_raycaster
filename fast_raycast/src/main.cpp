@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <chrono>
 #include <eigen3/Eigen/Eigen>
+#include <Eigen/Geometry>
 #include <experimental/filesystem>
 #include <iostream>
 #include <limits>
@@ -13,6 +14,7 @@ using namespace std::chrono_literals;
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/filters/extract_indices.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -160,8 +162,8 @@ namespace Obstacle {
  */
 class Plane {
  public:
-  Matrix<el_t, 3, 1> const normal_;
-  Matrix<el_t, 1, 3> origin_;
+  Vector3e const normal_;
+  RowVector3e origin_;
 
   Plane(Vector3e normal, Vector3e origin) : normal_{normal}, origin_{origin} {
     assert(normal_.norm() == 1);
@@ -174,6 +176,39 @@ class Plane {
         (((-rays.origins()).rowwise() + origin_).matrix() * normal_).array() /
         (rays.directions().matrix() * normal_).array();
     solutions = (solutions < 0).select(nan(), solutions);
+  }
+};
+
+/**
+ * Rectangle
+ * A Plane with a fixed height and width
+ */
+class Rectangle: Plane{
+ public:
+  //assumes origin in bottom left corner of rectangle
+  //length of these vectors determines side length
+  Vector3e height_vec_;
+  Vector3e width_vec_;
+
+  Rectangle(Vector3e origin, Vector3e height_vec, Vector3e width_vec):
+    Plane(height_vec.cross(width_vec).normalized(), origin),
+    height_vec_{height_vec}, width_vec_{width_vec}{
+  }
+
+  template <int NRays = Dynamic>
+  void computeSolution(Rays<NRays> const& rays,
+                      Solutions<NRays>& solutions) const {
+
+    Plane::computeSolution(rays, solutions);
+
+    Matrix<el_t, NRays, 3> intersections = (rays.directions().array().colwise()
+                         * solutions.array()).matrix() + rays.origins();
+    intersections = intersections.array().rowwise() - origin_.array();
+
+    Array<el_t, NRays, 1> height_proj = intersections*height_vec_;
+    Array<el_t, NRays, 1> width_proj = intersections*width_vec_;
+    solutions = ((height_proj > 0) && (height_proj < height_vec_.squaredNorm())
+                 && (width_proj > 0) && (width_proj < width_vec_.squaredNorm())).select(solutions, nan());
   }
 };
 
@@ -244,6 +279,64 @@ class Cone {
 
  private:
   Matrix<el_t, 3, 3> const M_;
+};
+
+class Car{
+  public:
+    std::vector<Rectangle> faces_;
+    Vector3e origin_;
+    el_t direction_;
+
+    //set the origin at the front center of the car for ease of use purposes
+    //default direction is +x, direction is angle (in radians) from the x axis
+    Car(Vector3e origin, el_t direction){
+      origin_ = origin;
+      direction_ = direction;
+      Matrix<el_t, 3, 3> rotm = AngleAxis<el_t>(direction, Vector3e::UnitZ()).matrix();
+
+      //front plane
+      //top plane
+      //hoop plane
+      MatrixXe origins(3, 3);
+      origins << -0.6,-0.75,0,
+                  0,-0.2,0.5,
+                 -1.8,-0.2,0;
+
+      MatrixXe lengths(3, 3);
+      lengths << 0,1.5,0,
+                 0,0.4,0,
+                 0,0.4,0;
+
+      MatrixXe heights(3, 3);
+      heights << 0.6,0.0,0.5,
+                 -1.8,0,0,
+                 0,0,1.2;
+
+      origins.transpose() = rotm * origins.transpose();
+      origins = origins.array().rowwise() + origin_.transpose().array();
+      lengths.transpose() = rotm * lengths.transpose();
+      heights.transpose() = rotm * heights.transpose();
+
+      for (Index i = 0; i < origins.rows(); ++i){
+        faces_.push_back(Rectangle(origins.row(i), heights.row(i), lengths.row(i)));
+      }
+    }
+
+    Car() : Car({0, 0, 0}, 0) {}
+
+    template <int NRays = Dynamic>
+    void computeSolution(Rays<NRays> const& rays,
+                         Solutions<NRays>& solutions) const {
+
+      Solutions<NRays> solutions_temp = make_solutions(rays);
+      for (Index f = 0; f < faces_.size(); ++f){
+        const Obstacle::Rectangle face = faces_[f];
+        face.computeSolution(rays, solutions_temp);
+        solutions = ((solutions < solutions_temp && solutions > 0)
+                    || solutions_temp.isNaN()).select(solutions, solutions_temp);
+      }
+    }
+
 };
 
 }  // namespace Obstacle
@@ -338,12 +431,13 @@ class Lidar {
 class DV {
  public:
   Obstacle::Plane plane_;
+  Obstacle::Car car_;
   std::vector<Obstacle::Cone> cones_;
 
-  DV(Obstacle::Plane plane, std::initializer_list<Obstacle::Cone> cones)
-      : plane_{plane}, cones_{cones} {}
+  DV(Obstacle::Plane plane, Obstacle::Car car, std::initializer_list<Obstacle::Cone> cones)
+      : plane_{plane}, car_{car}, cones_{cones} {}
 
-  DV() : DV{{{0, 0, 1}, {0, 0, 0}}, {}} {}
+  DV() : DV{{{0, 0, 1}, {0, 0, 0}}, {{0, 0, 0}, 0}, {}} {}
 
   template <int NRays = Dynamic>
   void computeSolution(Rays<NRays> const& rays,
@@ -361,6 +455,9 @@ class DV {
     object = ObjectIdxs_T::Constant(rays.rays(), 1,
                                     std::numeric_limits<idx_t>::max());
     plane_.computeSolution(rays, solutions);
+    car_.computeSolution(rays, solutions_temp);
+    solutions = ((solutions < solutions_temp) || solutions_temp.isNaN()
+                || (solutions_temp == 0)).select(solutions, solutions_temp);
 
     for (size_t c = 0; c < cones_.size(); ++c) {
       auto const& cone = cones_[c];
@@ -469,12 +566,16 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  World::Lidar vlp32({0, 0, 0.3}, 0.2 * M_PI / 180.0, "../sensor_info/VLP32_LaserInfo.csv");
+  World::Lidar vlp32({0, 0, 0}, 0.2 * M_PI / 180.0, "../sensor_info/VLP32_LaserInfo.csv");
   Rays<Dynamic>& rays = vlp32.rays();
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
 
+  Obstacle::Car car({0, 0, 0}, M_PI/2);
+
   constexpr el_t sc = 0.75;
+  // std::unique_ptr<World::DV> world_ptr;
+  // world_ptr.reset(new World::DV(ground, test, {}));
 
   bool earr;
   std::cin >> earr;
@@ -482,7 +583,7 @@ int main() {
   std::unique_ptr<World::DV> world_ptr;
   if (earr) {
     world_ptr.reset(new World::DV(
-        ground,
+        ground, car,
         {
             {{-12.75835829 * sc, 18.81545688 * sc, 0.29},
              {0, 0, -1},
@@ -530,7 +631,7 @@ int main() {
         }));
   } else {
     world_ptr.reset(new World::DV(
-        ground, {
+        ground, car, {
                     {{-5.770087622473654 * sc, 13.960476554628654 * sc, 0.29},
                      {0, 0, -1},
                      0.29,
@@ -573,6 +674,7 @@ int main() {
                      0.08},
                 }));
   }
+
   World::DV& world = *world_ptr.get();
   /*
   el_t xl, xh, xs;
