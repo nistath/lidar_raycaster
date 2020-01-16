@@ -1,0 +1,12 @@
+frame_id: "base_link"
+child_frame_id: "velodyne"
+transform:
+  translation:
+    x: 1.33
+    y: 0.0
+    z: 0.085
+  rotation:
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    w: 1.0
