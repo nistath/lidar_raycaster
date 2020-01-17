@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <chrono>
 #include <eigen3/Eigen/Eigen>
+#include <Eigen/Geometry>
 #include <experimental/filesystem>
 #include <iostream>
 #include <limits>
@@ -260,16 +261,20 @@ class Lidar {
   // elevation angles in radians
   std::vector<el_t> elev_angles;
   Rays<Dynamic> rays_;
+  // Horizontal field of view (180 degrees to simulate car occlusion)
+  el_t HFOV = M_PI;
+  Quaternion<el_t> direction_;
 
-  Lidar() : Lidar{{0, 0, 0}, 1} {}
+  Lidar() : Lidar{{0, 0, 0}, Quaternion<el_t>::Identity(), 1} {}
 
-  Lidar(Vector3e origin, el_t angular_resolution){
+  Lidar(Vector3e origin, Quaternion<el_t> direction, el_t angular_resolution){
     rays_.origin_offset = origin;
     angular_resolution_ = angular_resolution;
+    direction_ = direction;
   }
 
-  Lidar(Vector3e origin, el_t angular_resolution, std::string calib_info):
-    Lidar(origin, angular_resolution){
+  Lidar(Vector3e origin, Quaternion<el_t> direction, el_t angular_resolution, std::string calib_info):
+    Lidar(origin, direction, angular_resolution){
     setElevAngles(calib_info);
     rays_ = makeRays();
   }
@@ -279,6 +284,10 @@ class Lidar {
   Vector3e origin() { return rays_.origin_offset; }
 
   void setOrigin(Vector3e new_origin) { rays_.origin_offset = new_origin; }
+
+  Quaternion<el_t> direction() { return direction_; }
+
+  void setDirection(Quaternion<el_t> new_direction) { direction_ = new_direction; }
 
   int numLasers() { return elev_angles.size(); }
 
@@ -312,7 +321,7 @@ class Lidar {
     */
     // Create unit vectors
     Rays<Dynamic> rays;
-    int horiz_lasers = ceil((2 * M_PI) / angular_resolution_);
+    int horiz_lasers = ceil(HFOV / angular_resolution_);
     int num_rays = numLasers() * horiz_lasers;
     rays = Rays(num_rays);
     rays.origin_offset = rays_.origin_offset;
@@ -330,6 +339,8 @@ class Lidar {
         rays.directions()(laser * horiz_lasers + i, 2) = sin_elev;
       }
     }
+    Matrix<el_t, 3, 3> rotm = direction_.toRotationMatrix();
+    rays.directions().transpose() = rotm * rays.directions().transpose();
     rays.directions().rowwise().normalize();
     return rays;
   }
@@ -469,7 +480,7 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  World::Lidar vlp32({0, 0, 0.3}, 0.2 * M_PI / 180.0, "../sensor_info/VLP32_LaserInfo.csv");
+  World::Lidar vlp32({0, 0, 0.3}, {1,0,0,0}, 0.2 * M_PI / 180.0, "../sensor_info/VLP32_LaserInfo.csv");
   Rays<Dynamic>& rays = vlp32.rays();
 
   Obstacle::Plane ground({0, 0, 1}, {0, 0, 0});
