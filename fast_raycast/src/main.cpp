@@ -460,8 +460,7 @@ class DV {
       std::cout << "Unable to open file";
       exit(1);
     }
-    while (in_file.good()) {
-      std::getline(in_file, x, ',');
+    while (std::getline(in_file, x, ',')) {
       std::getline(in_file, y, ',');
       std::getline(in_file, z);
 
@@ -628,7 +627,7 @@ int main() {
   Solutions<Dynamic> hit_height(rays.rays());
   World::ObjectIdxs<Dynamic> object;
 
-  World::DV world = World::DV::readConeFromFile("../src/test.csv");
+  World::DV world = World::DV::readConeFromFile("../src/fsg_cones.csv");
   world.computeSolution(rays, solutions, hit_height, object);
   std::vector<std::vector<Index>> ray_per_cone;
   world.computeRayPerCone(object, ray_per_cone);
