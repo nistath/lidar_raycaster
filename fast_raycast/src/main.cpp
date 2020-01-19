@@ -1,11 +1,18 @@
 #include <assert.h>
+#include <chrono>
 #include <algorithm>
 #include <cmath>
 #include <eigen3/Eigen/Eigen>
+#include <Eigen/Geometry>
+#include <experimental/filesystem>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <optional>
+#include <thread>
+
+using namespace std::chrono_literals;
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -20,7 +27,16 @@ namespace lcaster {
 using namespace Eigen;
 
 using el_t = float;
+using StdVector = std::vector<el_t, Eigen::aligned_allocator<el_t>>;
 using Vector3e = Matrix<el_t, 3, 1>;
+using RowVector3e = Matrix<el_t, 1, 3>;
+using MatrixXe = Matrix<el_t, Dynamic, Dynamic>;
+using Pair = std::pair<el_t, el_t>;
+
+// constexpr auto toMap(StdVector& vec) {
+//   return Map<Array<el_t, Dynamic, 1>, AlignmentType::Aligned>(vec.data(),
+//                                                               vec.size(), 1);
+// }
 
 constexpr el_t nan(const char* tagp = "") {
   if constexpr (std::is_same_v<float, el_t>) {
@@ -66,6 +82,10 @@ class Rays : public Matrix<el_t, NRays, 6> {
 #undef __RAYS__GET_BLOCK
 
  public:
+  RowVector3e origin_offset = {0, 0, 0};
+
+  Rays() : Base(1, 6) {}
+
   template <typename OtherDerived>
   Rays(const Eigen::MatrixBase<OtherDerived>& other) : Base(other) {}
 
@@ -80,8 +100,13 @@ class Rays : public Matrix<el_t, NRays, 6> {
   /**
    *! Returns a block of the coordinates of each ray's origin.
    */
-  auto constexpr origins() { return get_block(0); }
-  auto const constexpr origins() const { return get_block(0); }
+  auto constexpr originsRaw() { return get_block(0); }
+  auto const constexpr originsRaw() const { return get_block(0); }
+
+  auto constexpr origins() { return originsRaw().rowwise() + origin_offset; }
+  auto const constexpr origins() const {
+    return originsRaw().rowwise() + origin_offset;
+  }
 
   /**
    *! Returns a block of the (unit) vector of each ray's direction.
@@ -187,6 +212,7 @@ class Plane {
     solutions =
         (((-rays.origins()).rowwise() + origin_).matrix() * normal_).array() /
         (rays.directions().matrix() * normal_).array();
+    solutions = (solutions < 0).select(nan(), solutions);
   }
 };
 
@@ -230,7 +256,11 @@ class Cone {
     Coeffs c0 = (L.transpose() * M_ * L).diagonal();
 
     auto dis = (c1 * c1 - c0 * c2).sqrt();
-    solutions = ((-c1 - dis) / c2).min((-c1 + dis) / c2);
+    Intersection::Solutions<NRays> soln1 = ((-c1 - dis) / c2);
+    soln1 = (soln1 < 0).select(nan(), soln1);
+    Intersection::Solutions<NRays> soln2 = ((-c1 + dis) / c2);
+    soln2 = (soln2 < 0).select(nan(), soln2);
+    solutions = (soln1 < soln2).select(soln1, soln2);
 
     {
       Intersection::Solutions<NRays> hit_height_;
@@ -268,6 +298,100 @@ class Cone {
 }  // namespace Obstacle
 
 namespace World {
+
+template <int NRays = Dynamic>
+
+class Lidar {
+ public:
+  // angular resolution in radians
+  el_t angular_resolution_;
+  // elevation angles in radians
+  std::vector<el_t> elev_angles;
+  Rays<Dynamic> rays_;
+  // Horizontal field of view (180 degrees to simulate car occlusion)
+  el_t HFOV = M_PI;
+  Quaternion<el_t> direction_;
+
+  Lidar() : Lidar{{0, 0, 0}, Quaternion<el_t>::Identity(), 1} {}
+
+  Lidar(Vector3e origin, Quaternion<el_t> direction, el_t angular_resolution){
+    rays_.origin_offset = origin;
+    angular_resolution_ = angular_resolution;
+    direction_ = direction;
+  }
+
+  Lidar(Vector3e origin, Quaternion<el_t> direction, el_t angular_resolution, std::string calib_info):
+    Lidar(origin, direction, angular_resolution){
+    setElevAngles(calib_info);
+    rays_ = makeRays();
+  }
+
+  Rays<Dynamic>& rays() { return rays_; }
+
+  Vector3e origin() { return rays_.origin_offset; }
+
+  void setOrigin(Vector3e new_origin) { rays_.origin_offset = new_origin; }
+
+  Quaternion<el_t> direction() { return direction_; }
+
+  void setDirection(Quaternion<el_t> new_direction) { direction_ = new_direction; }
+
+  int numLasers() { return elev_angles.size(); }
+
+  void setElevAngles(std::string calib_info){
+    /*
+      Read file, parse elevation angles
+      Assumes data in CSV format, with 1st column being laser
+      number and second column being elevation angle
+    */
+    // TODO check if legal file name?
+    std::ifstream file(calib_info);
+    std::string headers;
+    getline(file, headers);
+    std::string container;
+    std::stringstream intermediate;
+    std::vector<std::string> split_info;
+    while (getline(file, container)) {
+      intermediate << container;
+      while (getline(intermediate, container, ',')) {
+        split_info.push_back(container);
+      }
+      intermediate.clear();
+      elev_angles.push_back(stof(split_info[1]) * M_PI / 180.0);
+      split_info.clear();
+    }
+  }
+
+  Rays<Dynamic> makeRays() {
+    /*
+      Create Rays object from LiDAR angular resolution and elevation angles
+    */
+    // Create unit vectors
+    Rays<Dynamic> rays;
+    int horiz_lasers = ceil(HFOV / angular_resolution_);
+    int num_rays = numLasers() * horiz_lasers;
+    rays = Rays(num_rays);
+    rays.origin_offset = rays_.origin_offset;
+    rays.originsRaw() = MatrixXe::Zero(num_rays, 3);
+
+    for (Index laser = 0; laser < elev_angles.size(); laser++) {
+      const el_t sin_elev = sin(elev_angles[laser]);
+      const el_t cos_elev = cos(elev_angles[laser]);
+      for (Index i = 0; i < horiz_lasers; i++) {
+        el_t phase = i * angular_resolution_;
+        rays.directions()(laser * horiz_lasers + i, 0) =
+            cos_elev * cos(phase);
+        rays.directions()(laser * horiz_lasers + i, 1) =
+            cos_elev * sin(phase);
+        rays.directions()(laser * horiz_lasers + i, 2) = sin_elev;
+      }
+    }
+    Matrix<el_t, 3, 3> rotm = direction_.toRotationMatrix();
+    rays.directions().transpose() = rotm * rays.directions().transpose();
+    rays.directions().rowwise().normalize();
+    return rays;
+  }
+};
 
 template <int NRays = Dynamic>
 auto createHistogram(Obstacle::Cone const& cone,
@@ -336,8 +460,7 @@ class DV {
       std::cout << "Unable to open file";
       exit(1);
     }
-    while (in_file.good()) {
-      std::getline(in_file, x, ',');
+    while (std::getline(in_file, x, ',')) {
       std::getline(in_file, y, ',');
       std::getline(in_file, z);
 
@@ -357,6 +480,9 @@ class DV {
     Solutions<NRays> solutions_temp = make_solutions(rays);
     Solutions<NRays> hit_height_temp = make_solutions(rays);
 
+    solutions.resize(rays.rays(), 1);
+    hit_height.resize(rays.rays(), 1);
+
     using ObjectIdxs_T = std::remove_reference_t<decltype(object)>;
     using idx_t = typename ObjectIdxs_T::Scalar;
     object = ObjectIdxs_T::Constant(rays.rays(), 1,
@@ -367,7 +493,7 @@ class DV {
       auto const& cone = cones_[c];
       cone.computeSolution(rays, solutions_temp, true, &hit_height_temp);
 
-      for (int i = 0; i < rays.rays(); ++i) {
+      for (Index i = 0; i < rays.rays(); ++i) {
         if (std::isnan(solutions[i]) || std::isnan(solutions_temp[i]) ||
             solutions_temp[i] > solutions[i]) {
           continue;
@@ -413,46 +539,95 @@ class DV {
   }
 };  // namespace World
 
+struct Range {
+  el_t low;
+  el_t high;
+  el_t step;
+
+  Index count() const { return (high - low) / step; }
+  el_t get(Index iter) { return iter * step + low; }
+};
+
+class Grid {
+ public:
+  std::array<Range, 2> ranges_;
+  MatrixXd grid_;
+
+  Grid(std::array<Range, 2> ranges)
+      : ranges_{ranges}, grid_{ranges[0].count(), ranges[1].count()} {}
+
+  void serialize(std::ostream& stream) {
+    for (auto const& range : ranges_) {
+      stream << range.low << "," << range.high << "," << range.step << "\n";
+    }
+
+    const static IOFormat CSVFormat(StreamPrecision, DontAlignCols, ", ", "\n");
+    stream << grid_.format(CSVFormat);
+  }
+
+  void serialize(std::string const& out) {
+    std::ofstream file(out);
+    serialize(file);
+  }
+};
+
+template <int NRays = Dynamic>
+auto computeGrid(DV const& dv, Rays<NRays>& rays, std::array<Range, 2> ranges) {
+  Grid grid(ranges);
+
+  Solutions<NRays> solutions;
+  Solutions<NRays> hit_height;
+  ObjectIdxs<NRays> object;
+
+  std::atomic<Index> iters_done = 0;
+
+  auto const origin_offset = rays.origin_offset;
+
+#pragma omp parallel for
+  for (Index y_iter = 0; y_iter < ranges[0].count(); ++y_iter) {
+    for (Index z_iter = 0; z_iter < ranges[1].count(); ++z_iter) {
+      rays.origin_offset = origin_offset + RowVector3e{0, ranges[0].get(y_iter),
+                                                       ranges[1].get(z_iter)};
+
+      dv.computeSolution(rays, solutions, hit_height, object);
+      std::vector<std::vector<Index>> ray_per_cone;
+      dv.computeRayPerCone(object, ray_per_cone);
+
+      grid.grid_(y_iter, z_iter) = std::accumulate(
+          ray_per_cone.begin(), ray_per_cone.end(), (Index)0,
+          [](Index prior, std::vector<Index> const& vec) -> Index {
+            return prior + vec.size();
+          });
+    }
+
+    std::cout << 100 * (++iters_done) / ranges[0].count() << "%\n";
+  }
+
+  return grid;
+}
+
 }  // namespace World
 
 }  // namespace Intersection
 }  // namespace lcaster
 
-#include <chrono>
-
 int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  constexpr el_t HFOV = 2 * M_PI;
-  constexpr el_t HBIAS = -HFOV / 2;
-  constexpr el_t VFOV = M_PI / 6;
-  constexpr el_t VBIAS = -M_PI / 2;
+  World::Lidar vlp32({0, 0, 0.3}, {1,0,0,0}, 0.2 * M_PI / 180.0, "../sensor_info/VLP32_LaserInfo.csv");
+  Rays<Dynamic>& rays = vlp32.rays();
 
-  constexpr int NRings = 32;
-  constexpr int NPoints = 360 / 0.1;
-  constexpr int NRays = NPoints * NRings;
-  Rays<Dynamic> rays = Rays<NRays>::Zero();
-  rays.origins().col(2) = decltype(rays.origins().col(2))::Ones(NRays, 1);
-
-  for (int ring = 0; ring < NRings; ++ring) {
-    const el_t z = -2 * cos(VFOV * ring / NRings + VBIAS) - 0.5;
-    for (int i = 0; i < NPoints; ++i) {
-      const el_t phase = HFOV * i / NPoints + HBIAS;
-      rays.directions()(ring * NPoints + i, 0) = cos(phase);
-      rays.directions()(ring * NPoints + i, 1) = sin(phase);
-      rays.directions()(ring * NPoints + i, 2) = z;
-    }
-  }
-
-  rays.directions().rowwise().normalize();
+  el_t height = 0;
+  std::cin >> height;
+  vlp32.setOrigin({0, 0, height});
+  // rays.origin_offset = {0, 0, height};
 
   Solutions<Dynamic> solutions(rays.rays());
   Solutions<Dynamic> hit_height(rays.rays());
-
   World::ObjectIdxs<Dynamic> object;
 
-  World::DV world = World::DV::readConeFromFile("src/test.csv");
+  World::DV world = World::DV::readConeFromFile("../src/fsg_cones.csv");
   world.computeSolution(rays, solutions, hit_height, object);
   std::vector<std::vector<Index>> ray_per_cone;
   world.computeRayPerCone(object, ray_per_cone);
@@ -466,6 +641,7 @@ int main() {
   pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
   viewer.showCloud(cloud);
   while (!viewer.wasStopped()) {
+    std::this_thread::sleep_for(100ms);
   }
 
   return 0;
