@@ -508,7 +508,7 @@ class DV {
 
   template <int NRays = Dynamic>
   void computeRayPerCone(ObjectIdxs<NRays>& object,
-                         std::vector<std::vector<Index>>& ray_per_cone) {
+                         std::vector<std::vector<Index>>& ray_per_cone) const {
     ray_per_cone.resize(cones_.size());
     for (int i = 0; i < object.size(); ++i) {
       if (object[i] >= cones_.size())
