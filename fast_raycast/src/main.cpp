@@ -64,6 +64,11 @@ el_t gaussian(el_t x, el_t mean, el_t var = 1) {
   return toReturn * exp(temp);
 }
 
+struct Pose {
+  Vector3e position;
+  Quaternion<el_t> orientation;
+};
+
 template <int NRays = Dynamic>
 class Rays : public Matrix<el_t, NRays, 6> {
  private:
@@ -309,7 +314,7 @@ class Lidar {
   std::vector<el_t> elev_angles;
   Rays<Dynamic> rays_;
   // Horizontal field of view (180 degrees to simulate car occlusion)
-  el_t HFOV = M_PI;
+  const el_t HFOV = M_PI;
   Quaternion<el_t> direction_;
 
   Lidar() : Lidar{{0, 0, 0}, Quaternion<el_t>::Identity(), 1} {}
@@ -378,7 +383,8 @@ class Lidar {
       const el_t sin_elev = sin(elev_angles[laser]);
       const el_t cos_elev = cos(elev_angles[laser]);
       for (Index i = 0; i < horiz_lasers; i++) {
-        el_t phase = i * angular_resolution_;
+        // center rays around +x direction
+        el_t phase = pow(-1, i) * ceil(i/2) * angular_resolution_;
         rays.directions()(laser * horiz_lasers + i, 0) =
             cos_elev * cos(phase);
         rays.directions()(laser * horiz_lasers + i, 1) =
@@ -606,6 +612,77 @@ auto computeGrid(DV const& dv, Rays<NRays>& rays, std::array<Range, 2> ranges) {
   return grid;
 }
 
+template <int NRays = Dynamic>
+Grid computeTrackGrid(DV const& dv, Rays<NRays>& rays,
+                      std::array<Range, 2> ranges,
+                      std::vector<Pose> locations){
+  Grid tot_grid(ranges);
+  Matrix<el_t, -1, 3> const directions = rays.directions();
+
+  for (Pose loc: locations){
+    std::cout << loc.position << std::endl;
+    rays.origin_offset = loc.position;
+    Matrix<el_t, 3, 3> rotm = loc.orientation.toRotationMatrix();
+    rays.directions().transpose() = rotm * directions.transpose();
+    tot_grid.grid_ += computeGrid(dv, rays, ranges).grid_;
+  }
+  std::cout << "Done computing grid" << std::endl;
+  //maybe average over all locations instead of just adding?
+  return tot_grid;
+}
+
+std::vector<Pose> readPoseFromFile(std::string const fileName){
+  std::string x, y, z, qx, qy, qz, qw;
+  ifstream in_file;
+  std::vector<Pose> loc_list;
+  in_file.open(fileName);
+  if (!in_file) {
+    std::cout << "Unable to open file";
+    exit(1);
+  }
+  while (std::getline(in_file, x, ',')) {
+    std::getline(in_file, y, ',');
+    std::getline(in_file, z, ',');
+    std::getline(in_file, qx, ',');
+    std::getline(in_file, qy, ',');
+    std::getline(in_file, qz, ',');
+    std::getline(in_file, qw);
+
+    Pose pose = {{stof(x), stof(y), stof(z)},
+                {stof(qw), stof(qx), stof(qy), stof(qz)}};
+    // pose from file is in car coordinates (base_link), transform it to lidar frame
+    //harcoded from base_link2velodynetf.txt
+    pose.position += pose.orientation.toRotationMatrix() * Vector3e(1.33, 0, 0.085);
+
+    loc_list.push_back(pose);
+  }
+  in_file.close();
+
+  return loc_list;
+}
+
+template <int NRays = Dynamic>
+void displaySingleFrame(int frame, DV const& dv, Rays<NRays>& rays,
+                        std::vector<Pose> locations){
+  Solutions<Dynamic> solutions(rays.rays());
+  Solutions<Dynamic> hit_height(rays.rays());
+  World::ObjectIdxs<Dynamic> object;
+
+  rays.origin_offset = locations[frame].position;
+  Matrix<el_t, 3, 3> rotm = locations[frame].orientation.toRotationMatrix();
+  rays.directions().transpose() = rotm * rays.directions().transpose();
+  dv.computeSolution(rays, solutions, hit_height, object);
+
+  PointCloud::Ptr cloud(new PointCloud);
+  computePoints(rays, solutions, *cloud);
+
+  pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
+  viewer.showCloud(cloud);
+  while (!viewer.wasStopped()) {
+    std::this_thread::sleep_for(100ms);
+  }
+}
+
 }  // namespace World
 
 }  // namespace Intersection
@@ -615,7 +692,7 @@ int main() {
   using namespace lcaster;
   using namespace lcaster::Intersection;
 
-  World::Lidar vlp32({0, 0, 0.3}, {1,0,0,0}, 0.2 * M_PI / 180.0, "../sensor_info/VLP32_LaserInfo.csv");
+  World::Lidar vlp32({0, 0, 0}, {1,0,0,0}, 0.2 * M_PI / 180.0, "../sensor_info/VLP32_LaserInfo.csv");
   Rays<Dynamic>& rays = vlp32.rays();
 
   el_t height = 0;
@@ -628,21 +705,45 @@ int main() {
   World::ObjectIdxs<Dynamic> object;
 
   World::DV world = World::DV::readConeFromFile("../src/fsg_cones.csv");
-  world.computeSolution(rays, solutions, hit_height, object);
-  std::vector<std::vector<Index>> ray_per_cone;
-  world.computeRayPerCone(object, ray_per_cone);
+  std::vector<Pose> poses = World::readPoseFromFile("../src/fsg_car_positions.csv");
 
-  auto p = world.createHistograms(ray_per_cone, hit_height);
-  printHistograms(p);
+  // debugging
+  // World::displaySingleFrame(15000, world, rays, poses);
 
-  PointCloud::Ptr cloud(new PointCloud);
-  computePoints(rays, solutions, *cloud);
+  // std::vector<std::vector<Index>> ray_per_cone;
+  // world.computeRayPerCone(object, ray_per_cone);
 
-  pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
-  viewer.showCloud(cloud);
-  while (!viewer.wasStopped()) {
-    std::this_thread::sleep_for(100ms);
-  }
+  // auto p = world.createHistograms(ray_per_cone, hit_height);
+  // printHistograms(p);
+
+  std::vector<Pose> filtered_poses;
+  filtered_poses.push_back(poses[10000]);
+  filtered_poses.push_back(poses[15000]);
+  // for (int i = 0; i < poses.size(); i+=1000){
+  //   filtered_poses.push_back(poses[i]);
+  // }
+
+  el_t xl, xh, xs;
+  el_t yl, yh, ys;
+  std::cin >> xl >> xh >> xs >> yl >> yh >> ys;
+  std::cout << "Computing grid...\n";
+  // auto grid = World::computeGrid(
+  //     world, rays, {World::Range{xl, xh, xs}, World::Range{yl, yh, ys}});
+  auto grid = World::computeTrackGrid(
+        world, rays, {World::Range{xl, xh, xs}, World::Range{yl, yh, ys}}, filtered_poses);
+
+  std::string fname;
+  std::cin >> fname;
+  grid.serialize(fname);
+
+  // PointCloud::Ptr cloud(new PointCloud);
+  // computePoints(rays, solutions, *cloud);
+  //
+  // pcl::visualization::CloudViewer viewer("Simple Cloud Viewer");
+  // viewer.showCloud(cloud);
+  // while (!viewer.wasStopped()) {
+  //   std::this_thread::sleep_for(100ms);
+  // }
 
   return 0;
 }
